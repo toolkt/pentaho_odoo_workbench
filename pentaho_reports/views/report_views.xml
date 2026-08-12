@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Add Pentaho fields to report form -->
+    <record id="act_report_xml_pentaho_view" model="ir.ui.view">
+        <field name="name">ir.actions.report.pentaho</field>
+        <field name="model">ir.actions.report</field>
+        <field name="inherit_id" ref="base.act_report_xml_view"/>
+        <field name="arch" type="xml">
+            <field name="report_type" position="after">
+                <field name="pentaho_report_output_type" 
+                       invisible="report_type != 'pentaho'" 
+                       required="report_type == 'pentaho'"/>
+                <field name="pentaho_direct_print" 
+                       invisible="report_type != 'pentaho' or pentaho_report_output_type != 'pdf'"
+                       help="Print the report directly in the browser without downloading. Only available for PDF reports."/>
+                <field name="pentaho_file" 
+                       filename="pentaho_filename"
+                       invisible="report_type != 'pentaho'" 
+                       required="report_type == 'pentaho' and not pentaho_load_file"/>
+                <field name="pentaho_filename" invisible="1"/>
+                <field name="pentaho_load_file" invisible="report_type != 'pentaho'"/>
+            </field>
+            
+            <!-- Don't hide the standard model field for Pentaho reports -->
+            <!-- The model field remains visible and usable as normal -->
+        </field>
+    </record>
+    
+    <!-- Search view filter for Pentaho reports -->
+    <record id="act_report_xml_pentaho_search_view" model="ir.ui.view">
+        <field name="name">ir.actions.report.search.pentaho</field>
+        <field name="model">ir.actions.report</field>
+        <field name="inherit_id" ref="base.act_report_xml_search_view"/>
+        <field name="arch" type="xml">
+            <search position="inside">
+                <filter string="Pentaho Reports" 
+                        name="pentaho_reports" 
+                        domain="[('report_type', '=', 'pentaho')]"/>
+            </search>
+        </field>
+    </record>
+
+</odoo>
