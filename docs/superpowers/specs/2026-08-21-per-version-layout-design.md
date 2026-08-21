@@ -34,9 +34,10 @@ reportlab shipped by each local venv: v11 3.5.59, v12 5.0.0, v13 4.4.10, v14 *mi
 ```
 pentaho_odoo_workbench/
 ├── README.md                       version × Python × reportlab matrix; install notes; floor statement
-├── engine/                         THE canonical native engine + its pytest suite (tests/ inside)
-│   ├── __init__.py  bundle.py  fonts.py  formats.py  model.py  painter.py  query.py  renderer.py
-│   └── tests/                      conftest.py + test_*.py (+ calibration.py)
+├── engine/                         container so the package keeps its import name `native`
+│   └── native/                     THE canonical engine + its pytest suite (tests/ inside)
+│       ├── __init__.py  bundle.py  fonts.py  formats.py  model.py  painter.py  query.py  renderer.py
+│       └── tests/                  conftest.py + test_*.py (+ calibration.py)
 ├── fixtures/                       8 vendored, credential-scrubbed .prpt test fixtures (+ README)
 ├── tools/
 │   ├── sync_native.py              engine/ → vNN/pentaho_reports/native/ for every N (byte-identical)
@@ -80,8 +81,8 @@ The committed engine tests reference eight `.prpt` files by paths outside the re
 
 ### Sync and drift
 
-- `tools/sync_native.py`: deletes `vNN/pentaho_reports/native/`, copies `engine/` (excluding `__pycache__`, `.pytest_cache`) for each N in 11..19. Idempotent.
-- `tools/check_drift.py`: compares each copy to `engine/` file-by-file (names + bytes); prints the first difference; exit 1 on drift. Also exposed as `engine/tests/test_no_drift.py` (skips when not inside the repo).
+- `tools/sync_native.py`: deletes `vNN/pentaho_reports/native/`, copies `engine/native/` (excluding `__pycache__`, `.pytest_cache`) for each N in 11..19; also copies `fixtures/partner_list.prpt` → `vNN/pentaho_reports/tests/fixtures/partner_list.prpt`. Idempotent.
+- `tools/check_drift.py`: compares each copy to `engine/native/` (and the `partner_list.prpt` copies to `fixtures/`) file-by-file (names + bytes); prints the first difference; exit 1 on drift. Also exposed as `engine/tests/test_no_drift.py` (skips when not inside the repo).
 
 ## 5. Per-version glue — three families
 
