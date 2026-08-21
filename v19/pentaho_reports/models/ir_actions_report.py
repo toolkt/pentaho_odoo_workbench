@@ -128,11 +128,16 @@ class IrActionsReport(models.Model):
         parameters.update(variables)
         return parameters
 
-    def _render_pentaho(self, report_id, res_ids, data=None):
-        """Render a .prpt in-process → (report_bytes, output_type)."""
-        report = self.browse(report_id).exists()
-        if not report or report.report_type != 'pentaho':
-            raise UserError(_('Report %s is not a Pentaho report') % report_id)
+    def _render_pentaho_report(self, res_ids, data=None):
+        """Render this .prpt report in-process → (report_bytes, output_type).
+
+        The one place the native engine is invoked; both the JS entry point
+        (render_report) and Odoo's generic report dispatch (_render_pentaho)
+        funnel through here.
+        """
+        self.ensure_one()
+        if self.report_type != 'pentaho':
+            raise UserError(_('Report %s is not a Pentaho report') % self.report_name)
 
         def execute_query(sql, params):
             # savepoint so a bad query cannot poison the surrounding transaction
@@ -141,18 +146,25 @@ class IrActionsReport(models.Model):
                 return self.env.cr.dictfetchall()
 
         output_type = ((data or {}).get('output_type')
-                       or report.pentaho_report_output_type or 'pdf')
+                       or self.pentaho_report_output_type or 'pdf')
         try:
             rendered = NativeRenderer(execute_query).render(
-                report._pentaho_prpt_content(),
-                report._pentaho_parameters(res_ids, data),
+                self._pentaho_prpt_content(),
+                self._pentaho_parameters(res_ids, data),
                 output_type)
         except UnsupportedFeature as e:
             raise UserError(
                 _('The Pentaho renderer cannot render this report: %s') % e)
         _logger.info('Pentaho renderer produced %d bytes (%s) for %s',
-                     len(rendered), output_type, report.report_name)
+                     len(rendered), output_type, self.report_name)
         return rendered, output_type
+
+    @api.model
+    def _render_pentaho(self, report_ref, res_ids, data=None):
+        """Odoo >= 16 generic dispatch: ir.actions.report._render() calls
+        _render_<report_type>(report_ref, res_ids, data)."""
+        report = self._get_report(report_ref)
+        return report._render_pentaho_report(res_ids, data)
 
     @api.model
     def render_report(self, report_id, res_ids=None, data=None):
@@ -161,8 +173,10 @@ class IrActionsReport(models.Model):
         Called over ORM by the JS action handler with the report id, the
         active record ids, and the action's ``data`` dict.
         """
-        content, output_type = self._render_pentaho(report_id, res_ids or [], data)
-        report = self.browse(report_id)
+        report = self.browse(report_id).exists()
+        if not report or report.report_type != 'pentaho':
+            raise UserError(_('Report %s is not a Pentaho report') % report_id)
+        content, output_type = report._render_pentaho_report(res_ids or [], data)
 
         filename = report.report_name
         custom = ((data or {}).get('variables') or {}).get('filename')

@@ -73,10 +73,12 @@ Dependencies
 - reportlab (bundled with Odoo)
 - Print.js library (included)
 - Odoo modules: base, web
+- Python >= 3.6 (the renderer is shared, byte-identical, with the Odoo 11-19 builds of this module)
     """,
     'author': 'Toolkit Inc.',
     'website': 'https://www.toolkt.com',
     'depends': ['base', 'web'],
+    'external_dependencies': {'python': ['reportlab']},
     'data': [
         'views/report_views.xml',
     ],

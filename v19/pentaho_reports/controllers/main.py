@@ -15,7 +15,7 @@ _logger = logging.getLogger(__name__)
 
 class PentahoReportController(http.Controller):
 
-    @http.route('/pentaho/preview', type='json', auth='user')
+    @http.route('/pentaho/preview', type='jsonrpc', auth='user')
     def preview_pentaho_report(self, prpt_b64, model=None, ids=None, variables=None, **kw):
         """Render an uploaded .prpt (not yet saved as an ir.actions.report)
         to a PDF, for the true-engine preview in the Workbench designer.
