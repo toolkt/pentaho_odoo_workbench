@@ -8,4 +8,7 @@ Install: copy this folder into your addons path (or `--addons-path=/path/to/v12`
 `odoo-bin -d <db> -i pentaho_reports`. Settings → Technical → Reports → create a report with
 type *Pentaho Report* and upload the `.prpt`.
 
+Note: Odoo 12 itself needs Pillow < 10 (it uses the removed Image.ANTIALIAS); this module has
+no such requirement.
+
 Do not edit `native/` here — it is a synced copy of `../../engine/native` (see the root README).

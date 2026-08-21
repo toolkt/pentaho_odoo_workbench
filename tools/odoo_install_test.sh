@@ -37,7 +37,12 @@ if [ "$N" -ge 16 ]; then LP_FLAG=(--gevent-port=$((PORT+1000))); else LP_FLAG=(-
 MEM_FLAG=()
 if [ "$N" -lt 16 ] && [ "$(uname -s)" = "Darwin" ]; then MEM_FLAG=(--limit-memory-hard=0); fi
 
-( cd "$WB/odoo" && "$PY" "$ODOO_BIN" \
+# Odoo <= 12 still calls PIL.Image.ANTIALIAS (removed in Pillow 10); newer local venvs would
+# fail to bootstrap `base`. tools/pil_compat/sitecustomize.py restores the alias when absent.
+PIL_SHIM=""
+if [ "$N" -le 12 ]; then PIL_SHIM="$REPO/tools/pil_compat"; fi
+
+( cd "$WB/odoo" && PYTHONPATH="${PIL_SHIM}${PYTHONPATH:+:$PYTHONPATH}" "$PY" "$ODOO_BIN" \
     -d "$DB" -r "odoo$N" --db_host=localhost \
     --addons-path="$WB/odoo/addons,$REPO/v$N" \
     -i pentaho_reports --test-enable ${TEST_TAGS[@]+"${TEST_TAGS[@]}"} \
