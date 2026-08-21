@@ -4,11 +4,10 @@ number-fields without an explicit format-string are rendered the way Java's
 NumberFormat.getInstance() does it (grouping, 0-3 fraction digits, half-even),
 which is what the Pentaho engine falls back to.
 """
-from __future__ import annotations
-
 import datetime
 import re
 from decimal import Decimal, ROUND_HALF_EVEN
+from typing import Optional
 
 _PATTERN = re.compile(r"^([^#0]*)([#,0]+)(?:\.([#0]+))?([^#0]*)$")
 
@@ -62,7 +61,7 @@ def _apply_subpattern(value: Decimal, prefix: str, int_pat: str, frac_pat: str, 
     return prefix + out + suffix
 
 
-def format_number(value, pattern: str | None) -> str:
+def format_number(value, pattern: Optional[str]) -> str:
     if pattern is None:
         return _java_default(value)
 
@@ -105,7 +104,7 @@ _DATE_TOKEN_MAP = {
 _DATE_LITERAL_CHARS = set("/-: ,.")
 
 
-def java_dateformat_to_strftime(pattern: str) -> str | None:
+def java_dateformat_to_strftime(pattern: str) -> Optional[str]:
     """Translate a (subset of) Java SimpleDateFormat pattern to a Python
     strftime format string.
 
@@ -136,7 +135,7 @@ def java_dateformat_to_strftime(pattern: str) -> str | None:
     return "".join(out)
 
 
-def format_value(value, pattern: str | None) -> str:
+def format_value(value, pattern: Optional[str]) -> str:
     if value is None or value is False:
         return ""
     if isinstance(value, str):

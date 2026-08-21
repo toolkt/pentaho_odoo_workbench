@@ -3,12 +3,11 @@
 Only the feature subset used by the Piaggio reports is understood; anything
 else raises UnsupportedFeature so callers can surface a clear error.
 """
-from __future__ import annotations
-
 import io
 import logging
 import zipfile
 import xml.etree.ElementTree as ET
+from typing import Dict, Optional
 
 from .model import (
     Band,
@@ -66,11 +65,11 @@ def _is_ignorable_child(name: str) -> bool:
     return name in _IGNORED_CHILDREN or name.endswith("-expression")
 
 
-def _attrs_by_local(node) -> dict[str, str]:
+def _attrs_by_local(node) -> Dict[str, str]:
     return {_local(k): v for k, v in node.attrib.items()}
 
 
-def _to_float(value: str | None, default: float = 0.0) -> float:
+def _to_float(value: Optional[str], default: float = 0.0) -> float:
     if value in (None, ""):
         return default
     if value.endswith("%"):
@@ -99,9 +98,9 @@ class PrptBundle:
         self.report_footer = Band()
         self.root_style = Style()  # layout.xml root element-style (sub-report placement)
         self.group = Group()
-        self.query_name: str | None = None
-        self.sql: str | None = None
-        self.parameters: dict[str, PlainParameter] = {}
+        self.query_name = None   # type: Optional[str]
+        self.sql = None          # type: Optional[str]
+        self.parameters = {}     # type: Dict[str, PlainParameter]
 
     # ── construction ────────────────────────────────────────
 
@@ -310,7 +309,7 @@ class PrptBundle:
                     el.style.x = el.subreport.root_style.x
         return el
 
-    def _load_resource(self, value: str | None) -> bytes:
+    def _load_resource(self, value: Optional[str]) -> bytes:
         """Resolve a static <content> resource-key to bytes from the bundle.
 
         Value looks like 'resourcekey:<loader class>;resources/image.jpeg;<meta>'.
@@ -368,7 +367,7 @@ class PrptBundle:
         return style
 
     @staticmethod
-    def _apply_bg_color(a: dict[str, str], style: Style) -> None:
+    def _apply_bg_color(a: Dict[str, str], style: Style) -> None:
         # seen on border-styles in real bundles (e.g. a filled "rectangle"
         # separator bar); also accept content-styles/common-styles and the
         # "bg-color" spelling defensively, in case a report puts it there.
@@ -377,7 +376,7 @@ class PrptBundle:
             style.bg_color = color
 
     @staticmethod
-    def _parse_borders(a: dict[str, str], style: Style) -> None:
+    def _parse_borders(a: Dict[str, str], style: Style) -> None:
         all_width = a.get("border-width")
         all_style = a.get("border-style")
         for side in ("top", "bottom", "left", "right"):
@@ -420,7 +419,7 @@ class PrptBundle:
             self.query_name = query_name
             self.sql = self._find_sql_query(query_name)
 
-    def _find_sql_query(self, query_name: str) -> str | None:
+    def _find_sql_query(self, query_name: str) -> Optional[str]:
         ds_prefix = self._prefix + "datasources/"
         for entry in self._zf.namelist():
             if not entry.startswith(ds_prefix) or entry.endswith("/"):

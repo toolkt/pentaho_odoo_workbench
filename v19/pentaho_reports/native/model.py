@@ -1,8 +1,6 @@
 """Parsed representation of a .prpt bundle (subset)."""
-from __future__ import annotations
-
 import logging
-from dataclasses import dataclass, field as dc_field
+from typing import Dict, List, Optional, Tuple
 
 _logger = logging.getLogger(__name__)
 
@@ -11,67 +9,103 @@ class UnsupportedFeature(Exception):
     """The .prpt uses something the native renderer does not implement."""
 
 
-@dataclass
-class BorderSide:
-    width: float
-    style: str  # 'solid', 'dashed', ... (only drawable sides are stored)
+class _Record(object):
+    """Minimal stand-in for @dataclass (the engine must import on Python 3.6):
+    keyword constructor with per-instance defaults, field-wise equality, repr.
+
+    Subclasses list their fields in `_fields` as (name, default_or_factory,
+    is_factory) tuples; `_required` names fields without a default.
+    """
+    _fields = ()  # type: Tuple[Tuple[str, object, bool], ...]
+    _required = ()  # type: Tuple[str, ...]
+
+    def __init__(self, *args, **kwargs):
+        names = [f[0] for f in self._fields]
+        if len(args) > len(names):
+            raise TypeError("%s() takes at most %d positional arguments" % (type(self).__name__, len(names)))
+        for name, value in zip(names, args):
+            if name in kwargs:
+                raise TypeError("%s() got multiple values for argument %r" % (type(self).__name__, name))
+            kwargs[name] = value
+        unknown = set(kwargs) - set(names)
+        if unknown:
+            raise TypeError("%s() got unexpected keyword argument(s): %s" % (type(self).__name__, ", ".join(sorted(unknown))))
+        for name, default, is_factory in self._fields:
+            if name in kwargs:
+                value = kwargs[name]
+            elif name in self._required:
+                raise TypeError("%s() missing required argument: %r" % (type(self).__name__, name))
+            else:
+                value = default() if is_factory else default
+            setattr(self, name, value)
+
+    def __eq__(self, other):
+        if type(other) is not type(self):
+            return NotImplemented
+        return all(getattr(self, f[0]) == getattr(other, f[0]) for f in self._fields)
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        return result if result is NotImplemented else not result
+
+    __hash__ = None  # mutable, like an eq=True dataclass
+
+    def __repr__(self):
+        return "%s(%s)" % (type(self).__name__,
+                           ", ".join("%s=%r" % (f[0], getattr(self, f[0])) for f in self._fields))
 
 
-@dataclass
-class Style:
-    x: float = 0.0
-    y: float = 0.0
-    width: float = 0.0
-    height: float = 0.0
-    height_pct: float | None = None  # min-height="100%" → 100.0
-    font_face: str | None = None
-    font_size: float | None = None
-    bold: bool = False
-    italic: bool = False
-    underline: bool = False
-    align: str | None = None       # left | center | right
-    valign: str | None = None      # top | middle | bottom
-    borders: dict[str, BorderSide] = dc_field(default_factory=dict)
-    padding: dict[str, float] = dc_field(default_factory=dict)
-    dynamic_height: bool = False
-    scale: bool = False
-    keep_aspect: bool = False
-    draw_shape: bool = False
-    bg_color: str | None = None    # raw color string, e.g. "#c9c98b" or "light_gray"
+class BorderSide(_Record):
+    _fields = (("width", None, False), ("style", None, False))
+    _required = ("width", "style")   # style: 'solid', 'dashed', ... (only drawable sides are stored)
 
 
-@dataclass
-class Element:
-    kind: str                       # label | text-field | number-field | content |
-    #                                 content-field | band | horizontal-line | sub-report
-    style: Style = dc_field(default_factory=Style)
-    field: str | None = None        # data binding
-    value: str | None = None        # label text
-    fmt: str | None = None          # explicit format-string, if any
-    barcode_type: str | None = None  # kind == simple-barcodes/simple-barcode, e.g. "code128"
-    elements: list["Element"] = dc_field(default_factory=list)   # kind == band
-    subreport: "object | None" = None                         # kind == sub-report
-    resource: bytes | None = None                             # kind == content
+class Style(_Record):
+    _fields = (
+        ("x", 0.0, False), ("y", 0.0, False), ("width", 0.0, False), ("height", 0.0, False),
+        ("height_pct", None, False),      # min-height="100%" → 100.0
+        ("font_face", None, False), ("font_size", None, False),
+        ("bold", False, False), ("italic", False, False), ("underline", False, False),
+        ("align", None, False),           # left | center | right
+        ("valign", None, False),          # top | middle | bottom
+        ("borders", dict, True),          # Dict[str, BorderSide]
+        ("padding", dict, True),          # Dict[str, float]
+        ("dynamic_height", False, False), ("scale", False, False), ("keep_aspect", False, False),
+        ("draw_shape", False, False),
+        ("bg_color", None, False),        # raw color string, e.g. "#c9c98b" or "light_gray"
+    )
 
 
-@dataclass
-class Band:
-    elements: list[Element] = dc_field(default_factory=list)
-    style: Style = dc_field(default_factory=Style)
+class Element(_Record):
+    _fields = (
+        ("kind", None, False),            # label | text-field | number-field | content |
+        #                                   content-field | band | horizontal-line | sub-report
+        ("style", Style, True),
+        ("field", None, False),           # data binding
+        ("value", None, False),           # label text
+        ("fmt", None, False),             # explicit format-string, if any
+        ("barcode_type", None, False),    # kind == simple-barcodes/simple-barcode, e.g. "code128"
+        ("elements", list, True),         # kind == band  (List[Element])
+        ("subreport", None, False),       # kind == sub-report
+        ("resource", None, False),        # kind == content (bytes)
+    )
+    _required = ("kind",)
 
 
-@dataclass
-class Group:
-    fields: list[str] = dc_field(default_factory=list)
-    header: Band = dc_field(default_factory=Band)
-    footer: Band = dc_field(default_factory=Band)
-    details: Band = dc_field(default_factory=Band)
-    no_data: Band = dc_field(default_factory=Band)
-    # a group parsed from a <group-body> sets `child` (the nested <group>) and
-    # leaves details/no_data empty; a group parsed from a <data-body> is a LEAF
-    # (has details/no_data, child is None). Single-level reports never set
-    # this, so they keep working unchanged.
-    child: "Group | None" = None
+class Band(_Record):
+    _fields = (("elements", list, True), ("style", Style, True))
+
+
+class Group(_Record):
+    _fields = (
+        ("fields", list, True),
+        ("header", Band, True), ("footer", Band, True), ("details", Band, True), ("no_data", Band, True),
+        # a group parsed from a <group-body> sets `child` (the nested <group>) and
+        # leaves details/no_data empty; a group parsed from a <data-body> is a LEAF
+        # (has details/no_data, child is None). Single-level reports never set
+        # this, so they keep working unchanged.
+        ("child", None, False),
+    )
 
 
 # points per named page format (width, height) in portrait.
@@ -112,16 +146,18 @@ PAGE_FORMATS = {
 }
 
 
-@dataclass
-class PageDef:
-    format: str = "LETTER"
-    orientation: str = "portrait"
-    margins: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 0.0)  # top,left,bottom,right
-    width: float = 0.0    # explicit page size (custom formats, e.g. BIR 612x920);
-    height: float = 0.0   # takes precedence over the named format
+class PageDef(_Record):
+    _fields = (
+        ("format", "LETTER", False),
+        ("orientation", "portrait", False),
+        ("margins", (0.0, 0.0, 0.0, 0.0), False),   # top,left,bottom,right
+        ("width", 0.0, False),    # explicit page size (custom formats, e.g. BIR 612x920);
+        ("height", 0.0, False),   # takes precedence over the named format
+    )
 
     @property
-    def size_pt(self) -> tuple[float, float]:
+    def size_pt(self):
+        # type: () -> Tuple[float, float]
         if self.width and self.height:
             w, h = self.width, self.height
         else:
@@ -140,9 +176,11 @@ class PageDef:
         return (w, h)
 
 
-@dataclass
-class PlainParameter:
-    name: str
-    mandatory: bool = False
-    ptype: str = "java.lang.Object"
-    attrs: dict[str, str] = dc_field(default_factory=dict)
+class PlainParameter(_Record):
+    _fields = (
+        ("name", None, False),
+        ("mandatory", False, False),
+        ("ptype", "java.lang.Object", False),
+        ("attrs", dict, True),            # Dict[str, str]
+    )
+    _required = ("name",)

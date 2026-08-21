@@ -5,9 +5,8 @@ Piaggio reports use: page bands repeat on every page, the report header
 renders once, one optional group partitions consecutive rows, detail rows
 flow with page breaks, and the report footer flows after the last row.
 """
-from __future__ import annotations
-
 import io
+from typing import List, Optional
 
 from reportlab.pdfgen import canvas as rl_canvas
 
@@ -60,7 +59,7 @@ class NativeRenderer:
 
     # ── data ────────────────────────────────────────────────
 
-    def _fetch_rows(self, bundle: PrptBundle, parameters: dict) -> list[dict]:
+    def _fetch_rows(self, bundle: PrptBundle, parameters: dict) -> List[dict]:
         if not bundle.sql or not bundle.has_data_bound_elements():
             return []
         # sub-report bands are measured and painted separately: cache per
@@ -76,7 +75,7 @@ class NativeRenderer:
 
     # ── band sequence ───────────────────────────────────────
 
-    def _emit_report(self, flow: "_Flow", bundle: PrptBundle, rows: list[dict], parameters: dict) -> None:
+    def _emit_report(self, flow: "_Flow", bundle: PrptBundle, rows: List[dict], parameters: dict) -> None:
         first = rows[0] if rows else {}
         last = rows[-1] if rows else {}
         subrenderer = self._subreport_emitter(parameters)
@@ -92,7 +91,7 @@ class NativeRenderer:
 
         flow.emit(bundle.report_footer, last, subrenderer=subrenderer)
 
-    def _emit_group(self, flow: "_Flow", group: Group, rows: list[dict], subrenderer) -> None:
+    def _emit_group(self, flow: "_Flow", group: Group, rows: List[dict], subrenderer) -> None:
         """Recursively emit one (possibly nested) group level over `rows`.
 
         Partitions `rows` on this group's own fields; for each partition,
@@ -111,11 +110,11 @@ class NativeRenderer:
             flow.emit(group.footer, part[-1], subrenderer=subrenderer)
 
     @staticmethod
-    def _partition_rows(rows: list[dict], fields: list[str]) -> list[list[dict]]:
+    def _partition_rows(rows: List[dict], fields: List[str]) -> List[List[dict]]:
         """Partition rows into consecutive runs of equal key(s) over `fields`."""
         if not fields:
             return [rows]
-        groups: list[list[dict]] = []
+        groups = []  # type: List[List[dict]]
         current_key = object()
         for row in rows:
             key = tuple(row.get(f) for f in fields)
@@ -295,7 +294,7 @@ class _Flow:
         self.footer_h = _band_height(bundle.page_footer, painter, page_band_row)
         self.content_top = m_top + self.header_h
         self.content_bottom = page_h - m_bottom - self.footer_h
-        self.cursor: float | None = None  # None → page not started yet
+        self.cursor = None  # type: Optional[float]  — None → page not started yet
 
     def _start_page(self) -> None:
         _paint_band(self.bundle.page_header, self.painter, self.margin_left, self.margin_top,

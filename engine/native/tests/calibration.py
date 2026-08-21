@@ -25,6 +25,7 @@ Arial 8 asc=8.05, Serif 10 asc=8.98 (= Type1 Times-Roman bbox 898).
 import io
 import re
 import zipfile
+from typing import List, Tuple
 
 WRAP = "alpha bravo charlie delta echo foxtrot golf hotel india juliet"
 OVER = "overflow lima mike november oscar papa"
@@ -142,7 +143,7 @@ def build_prpt() -> bytes:
 _NUM = r"[-+]?\d*\.?\d+"
 
 
-def pdf_text_items(pdf_bytes: bytes) -> list[tuple[float, float, str]]:
+def pdf_text_items(pdf_bytes: bytes) -> List[Tuple[float, float, str]]:
     """(x, y_top, text) for every text-showing operator, all pages."""
     from pypdf import PdfReader
 
@@ -168,7 +169,7 @@ def pdf_text_items(pdf_bytes: bytes) -> list[tuple[float, float, str]]:
     return items
 
 
-def pdf_image_placements(pdf_bytes: bytes) -> list[dict]:
+def pdf_image_placements(pdf_bytes: bytes) -> List[dict]:
     """Placement of image XObjects: x, y_top, w, h (top-down coords)."""
     from pypdf import PdfReader
 

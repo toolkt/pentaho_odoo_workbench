@@ -1,12 +1,11 @@
 """Turn a Pentaho ${param} SQL query into a psycopg2 query + parameter list."""
-from __future__ import annotations
-
 import re
+from typing import List, Tuple
 
 _PLACEHOLDER = re.compile(r"\$\{(\w+)\}")
 
 
-def prepare_sql(sql: str, parameters: dict) -> tuple[str, list]:
+def prepare_sql(sql: str, parameters: dict) -> Tuple[str, list]:
     """Replace every ${name} with %s placeholders (lists expand element-wise).
 
     Values are always passed as bind parameters, never interpolated. An empty
@@ -15,7 +14,7 @@ def prepare_sql(sql: str, parameters: dict) -> tuple[str, list]:
     psycopg2 does not mistake them for placeholders.
     """
     params: list = []
-    pieces: list[str] = []
+    pieces = []  # type: List[str]
     last = 0
 
     for match in _PLACEHOLDER.finditer(sql):

@@ -8,10 +8,9 @@ native/tests/calibration.py): line advance equals the font size, the first
 baseline sits bbox-yMax below the block top, and borders inset the content
 box by their full width (their stroke is drawn at half width inside the box).
 """
-from __future__ import annotations
-
 import io
 import logging
+from typing import Dict, List, Optional, Tuple
 
 from reportlab.lib import colors as rl_colors
 from reportlab.pdfbase import pdfmetrics
@@ -22,7 +21,7 @@ from .model import Style
 _logger = logging.getLogger(__name__)
 
 
-def parse_color(value: str | None) -> tuple[float, float, float] | None:
+def parse_color(value: Optional[str]) -> Optional[Tuple[float, float, float]]:
     """Parse a Pentaho color string into an (r, g, b) 0-1 tuple, or None.
 
     Accepts "#rrggbb", the short form "#rgb", and named colors as seen in
@@ -86,10 +85,10 @@ def line_height(size: float) -> float:
     return size
 
 
-def wrap_text(text: str, font: str, size: float, width: float) -> list[str]:
+def wrap_text(text: str, font: str, size: float, width: float) -> List[str]:
     """Word-wrap text to the given width; hard-break oversized words."""
     width = max(1.0, width)
-    lines: list[str] = []
+    lines = []  # type: List[str]
     for raw_line in (text or "").splitlines() or [""]:
         words = raw_line.split(" ")
         current = ""
@@ -115,7 +114,7 @@ def text_block_height(num_lines: int, size: float) -> float:
     return num_lines * size
 
 
-def _insets(style: Style) -> dict[str, float]:
+def _insets(style: Style) -> Dict[str, float]:
     """Content-box inset per side = padding + border width (Java box model)."""
     out = {}
     for side in ("top", "bottom", "left", "right"):
@@ -187,7 +186,7 @@ class Painter:
                 self.c.setLineWidth(max(0.5, size / 18.0))
                 self.c.line(line_x, pdf_y - 1.5, line_x + lw, pdf_y - 1.5)
 
-    def _font(self, style: Style) -> tuple[str, float]:
+    def _font(self, style: Style) -> Tuple[str, float]:
         size = style.font_size or fonts.DEFAULT_SIZE
         return fonts.resolve(style.font_face, style.bold, style.italic), size
 

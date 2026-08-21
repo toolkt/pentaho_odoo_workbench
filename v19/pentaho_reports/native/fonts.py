@@ -3,10 +3,9 @@
 Tries real TTFs (macOS Arial, Linux Liberation Sans) so output matches the
 Java engine's metrics; falls back to the metrically-similar base-14 fonts.
 """
-from __future__ import annotations
-
 import logging
 import os
+from typing import Optional
 
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -51,7 +50,7 @@ _COURIER = {
     (True, True): "Courier-BoldOblique",
 }
 
-_arial_family: dict | None = None
+_arial_family = None  # type: Optional[dict]
 
 
 def _register_arial() -> dict:
@@ -76,7 +75,7 @@ def _register_arial() -> dict:
     return family
 
 
-def resolve(face: str | None, bold: bool = False, italic: bool = False) -> str:
+def resolve(face: Optional[str], bold: bool = False, italic: bool = False) -> str:
     face = face or DEFAULT_FACE
     key = (bold, italic)
     lowered = face.lower()
