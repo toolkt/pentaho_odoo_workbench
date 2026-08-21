@@ -29,13 +29,20 @@ TEST_TAGS=()
 if [ "$N" -ge 12 ]; then TEST_TAGS=(--test-tags "/pentaho_reports"); fi
 # Odoo 11-15 know --longpolling-port, 16+ --gevent-port (unknown options abort the run).
 if [ "$N" -ge 16 ]; then LP_FLAG=(--gevent-port=$((PORT+1000))); else LP_FLAG=(--longpolling-port=$((PORT+1000))); fi
+# Odoo <=15's service/server.py calls set_limit_memory_hard() unconditionally on any
+# POSIX system and tries resource.setrlimit(RLIMIT_RSS, ...) on Darwin, which macOS
+# rejects with EINVAL ("current limit exceeds maximum limit") before the server can
+# even start. 16+ guards this call to platform.system() == 'Linux'. Disable the limit
+# via the CLI flag (0 is falsy, so the buggy call becomes a no-op) on macOS for <16.
+MEM_FLAG=()
+if [ "$N" -lt 16 ] && [ "$(uname -s)" = "Darwin" ]; then MEM_FLAG=(--limit-memory-hard=0); fi
 
 ( cd "$WB/odoo" && "$PY" "$ODOO_BIN" \
     -d "$DB" -r "odoo$N" --db_host=localhost \
     --addons-path="$WB/odoo/addons,$REPO/v$N" \
     -i pentaho_reports --test-enable ${TEST_TAGS[@]+"${TEST_TAGS[@]}"} \
     --stop-after-init --without-demo=all \
-    --http-port="$PORT" "${LP_FLAG[@]}" \
+    --http-port="$PORT" "${LP_FLAG[@]}" ${MEM_FLAG[@]+"${MEM_FLAG[@]}"} \
     --log-level=test --logfile="$LOG" ) 2>>"$LOG"
 rc=$?
 
