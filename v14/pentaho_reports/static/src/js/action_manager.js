@@ -8,8 +8,9 @@ odoo.define('pentaho_reports.ActionManager', function (require) {
  * else (console.error + Promise.reject), so we layer an include on top of it
  * (the explicit require pins the load order) and take over report_type
  * 'pentaho': ORM call render_report → file download through /pentaho/download
- * (session.get_file POSTs a form with `token` + `csrf_token`; the route
- * answers with the fileToken cookie that unblocks the UI) or direct print.
+ * (on 12-14 session.get_file POSTs a form with token + csrf_token; its
+ * complete callback unblocks the UI — on 11/12 that callback is driven by
+ * the fileToken cookie the route sets) or direct print.
  */
 var ActionManager = require('web.ActionManager');
 require('web.ReportActionManager');
@@ -27,6 +28,23 @@ function getBrowserInfo() {
         isEdge: ua.indexOf('edg') > -1,
         isSafari: ua.indexOf('safari') > -1 && ua.indexOf('chrome') === -1,
     };
+}
+
+/**
+ * Human-readable text from the three error shapes we can receive:
+ *  - our own `Error` (message is a string),
+ *  - a `_rpc` rejection `{message: <odoo error>, event}` (text at message.data.message),
+ *  - a `session.get_file` error: the parsed Odoo exception `{message, data: {message, ...}}`.
+ */
+function errorMessage(error) {
+    var payload = (error && error.message && typeof error.message === 'object') ? error.message : error;
+    if (payload && payload.data && payload.data.message) {
+        return payload.data.message;
+    }
+    if (payload && typeof payload.message === 'string') {
+        return payload.message;
+    }
+    return _t('Unknown error');
 }
 
 /** Open the PDF in a new tab through /pentaho/print (Firefox prints from there). */
@@ -145,10 +163,12 @@ ActionManager.include({
             if (options && options.on_close) {
                 options.on_close();
             }
-        }).guardedCatch(function (error) {
+        }).catch(function (error) {
             framework.unblockUI();
-            var message = (error && error.message) || (error && error.data && error.data.message) || _t('Unknown error');
-            self.displayNotification({ type: 'danger', title: _t('Error generating report'), message: message, sticky: true });
+            if (error && error.event && typeof error.event.preventDefault === 'function') {
+                error.event.preventDefault();   // we show our own notification; skip the core crash dialog
+            }
+            self.displayNotification({ type: 'danger', title: _t('Error generating report'), message: errorMessage(error), sticky: true });
         });
     },
 });
