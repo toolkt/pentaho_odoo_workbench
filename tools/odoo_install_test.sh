@@ -33,7 +33,7 @@ if [ "$N" -ge 16 ]; then LP_FLAG=(--gevent-port=$((PORT+1000))); else LP_FLAG=(-
 ( cd "$WB/odoo" && "$PY" "$ODOO_BIN" \
     -d "$DB" -r "odoo$N" --db_host=localhost \
     --addons-path="$WB/odoo/addons,$REPO/v$N" \
-    -i pentaho_reports --test-enable "${TEST_TAGS[@]}" \
+    -i pentaho_reports --test-enable ${TEST_TAGS[@]+"${TEST_TAGS[@]}"} \
     --stop-after-init --without-demo=all \
     --http-port="$PORT" "${LP_FLAG[@]}" \
     --log-level=test --logfile="$LOG" ) 2>>"$LOG"

@@ -3,8 +3,8 @@
 /pentaho/download and /pentaho/print (PDF replay; fileToken cookie contract
 that Odoo 11-14's session.get_file depends on).
 
-Version-agnostic: posts JSON through the raw requests session (works on 11+),
-feature-detects the res.users groups field name (group_ids on 19).
+Version-agnostic: posts JSON through self.opener (HttpCase's requests session,
+works on 11+), feature-detects the res.users groups field name (group_ids on 19).
 """
 import base64
 import json
@@ -128,15 +128,14 @@ class TestPentahoControllers(HttpCase):
         self.assertIn('inline', resp.headers.get('Content-Disposition', ''))
 
     def test_download_requires_login(self):
-        # self.opener is a fresh cookie jar every setUp and nothing in this
-        # test calls self.authenticate(), so as long as we do not reuse a
-        # session_id cookie from another test this is a genuinely anonymous
-        # request. Unlike a bare requests.Session(), self.opener also carries
-        # whatever the test harness itself requires to reach the dispatcher
-        # (Odoo >= 16's Opener.request() injects a required test-only cookie
-        # per call, see odoo.tests.common.HttpCase.allow_requests) — a caller
-        # with none of that harness plumbing 400s before auth='user' even
-        # runs, which would falsely "pass" this test for the wrong reason.
+        # Make the request anonymous: drop every cookie self.opener holds.
+        # On Odoo 11-15 that removes the (unauthenticated) session cookie
+        # setUp seeded; on 16-18 it also removes the test-request-key cookie,
+        # and a MISSING key takes the lenient branch in the dispatcher so the
+        # request still reaches the route; on 19 Opener re-injects that key
+        # per request. Either way the route sees no session -> must refuse.
+        # A bare requests.Session() cannot be used: without the test-request
+        # key Odoo 16+ test mode answers 400 before routing.
         self.opener.cookies.clear()
         resp = self.opener.get(self._url('/pentaho/download'),
                                params={'data': self._payload()}, allow_redirects=False)

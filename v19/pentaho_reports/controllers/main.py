@@ -20,7 +20,7 @@ class PentahoReportController(http.Controller):
         """Render an uploaded .prpt (not yet saved as an ir.actions.report)
         to a PDF, for the true-engine preview in the Workbench designer.
 
-        Unlike ir.actions.report._render_pentaho, the .prpt bytes come
+        Unlike ir.actions.report._render_pentaho_report, the .prpt bytes come
         straight from the request body instead of a stored report record
         (the designer previews reports before/while they are saved), so the
         execute_query closure and parameters dict are rebuilt here following
@@ -59,7 +59,7 @@ class PentahoReportController(http.Controller):
         def execute_query(sql, params):
             # savepoint so a bad/malicious query in the previewed report
             # cannot poison the surrounding transaction (mirrors
-            # ir.actions.report._render_pentaho's execute_query)
+            # ir.actions.report._render_pentaho_report's execute_query)
             with request.env.cr.savepoint():
                 request.env.cr.execute(sql, params)
                 return request.env.cr.dictfetchall()
