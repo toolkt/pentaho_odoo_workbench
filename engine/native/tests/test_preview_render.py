@@ -9,19 +9,14 @@ runnable only inside Odoo).
 """
 import pytest
 
-from conftest import PIAGGIO_DIR
+from conftest import EVERGOOD_SALE_REPORT_PRPT
 
 from native.renderer import NativeRenderer
 
 # a small, real-world .prpt: two text-fields bound to a two-column query,
 # no group, no sub-report — good enough to prove the render path without
 # pulling in the heavier calibration fixtures
-SALE_REPORT_PRPT = PIAGGIO_DIR / "sample_prpt" / "evergood_minimart__sale_report.prpt"
-
-pytestmark = pytest.mark.skipif(
-    not SALE_REPORT_PRPT.exists(),
-    reason="sample .prpt fixture not present in this checkout: %s" % SALE_REPORT_PRPT,
-)
+SALE_REPORT_PRPT = EVERGOOD_SALE_REPORT_PRPT
 
 
 def test_preview_render_produces_pdf_from_uploaded_bytes():

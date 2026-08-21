@@ -6,7 +6,7 @@ import datetime
 
 import pytest
 
-from conftest import MODULE_DIR
+from conftest import PRINT_SUPPLIER_CHECK_PRPT
 
 import native.bundle as bundle_mod
 from native.bundle import PrptBundle
@@ -17,14 +17,7 @@ from native.renderer import NativeRenderer
 # format-string="MM/dd/yyyy"> and nothing else this renderer doesn't support
 # (no <rectangle>, no <sub-report>, no <style-expression>) — proves
 # date-field alone, not some other unsupported element, is what's under test.
-CHECK_VOUCHER_PRPT = (
-    MODULE_DIR.parent / "sample_prpt" / "amici_v11__print_supplier_check.prpt"
-)
-
-pytestmark = pytest.mark.skipif(
-    not CHECK_VOUCHER_PRPT.exists(),
-    reason="sample .prpt fixture not present in this checkout: %s" % CHECK_VOUCHER_PRPT,
-)
+CHECK_VOUCHER_PRPT = PRINT_SUPPLIER_CHECK_PRPT
 
 
 def _row(**over):
