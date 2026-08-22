@@ -131,7 +131,7 @@ class IrActionsReport(models.Model):
         """Render this .prpt report in-process → (report_bytes, output_type).
 
         The one place the native engine is invoked; both the JS entry point
-        (render_report) and Odoo's generic report dispatch (_render_pentaho)
+        (render_report) and Odoo's generic report dispatch (render_pentaho)
         funnel through here.
         """
         self.ensure_one()

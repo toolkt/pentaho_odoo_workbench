@@ -67,10 +67,11 @@
         <div class="oe_span12">
             <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
 report = self.env.ref('my_module.report_invoice_pentaho')
-pdf_content, output_type = self.env['ir.actions.report']._render_pentaho(
+content_b64, output_type, filename, direct_print = self.env['ir.actions.report'].render_report(
     report.id, record_ids,
     {'variables': {'custom_var': 'value'}},
-)</pre>
+)
+pdf_bytes = base64.b64decode(content_b64)</pre>
         </div>
     </div>
 </section>

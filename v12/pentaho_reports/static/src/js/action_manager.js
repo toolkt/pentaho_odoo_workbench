@@ -8,8 +8,8 @@ odoo.define('pentaho_reports.ActionManager', function (require) {
  * else, so we layer an include on top of it (the explicit require pins the
  * load order) and take over report_type 'pentaho': ORM call render_report →
  * file download through /pentaho/download (session.get_file POSTs a form
- * with token + csrf_token and polls for the fileToken cookie the route sets;
- * its complete callback unblocks the UI) or direct print.
+ * with token + csrf_token; its complete callback — fired on load and on
+ * error — unblocks the UI) or direct print.
  *
  * Everything is jQuery 1.11 Deferreds ($.Deferred / .then(ok, fail)):
  * native Promises would not chain through _rpc's deferreds.

@@ -73,6 +73,9 @@ class TestPentahoControllers(HttpCase):
         # READ COMMITTED, not just the one that inserted it; safe because this
         # only ever runs against the throwaway pentaho_test_v11 database that
         # tools/odoo_install_test.sh drops right after the run.
+        # Consequence: the committed users outlive the test (TransactionCase only rolls back); logins
+        # must stay unique per run. Rebinding self.cr to the test cursor is not an option: HttpCase's
+        # leave_test_mode cleanup runs before TransactionCase's rollback and would close it first.
         self.cr.commit()
         return user
 

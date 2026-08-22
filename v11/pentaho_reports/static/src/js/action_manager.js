@@ -4,12 +4,12 @@ odoo.define('pentaho_reports.ActionManager', function (require) {
 /**
  * Pentaho report actions on the legacy web client (Odoo 11).
  *
- * Core's ReportActionManager handles qweb-* types only and rejects anything
- * else, so we layer an include on top of it (the explicit require pins the
- * load order) and take over report_type 'pentaho': ORM call render_report →
- * file download through /pentaho/download (session.get_file POSTs a form
- * with token + csrf_token and polls for the fileToken cookie the route sets;
- * its complete callback unblocks the UI) or direct print.
+ * Core's `report.report` include handles qweb-* types only (and warns for
+ * anything else), so we layer an include on top of it (the explicit require
+ * pins the load order) and take over report_type 'pentaho': ORM call
+ * render_report → file download through /pentaho/download (session.get_file
+ * POSTs a form with token + csrf_token and polls for the fileToken cookie
+ * the route sets; its complete callback unblocks the UI) or direct print.
  *
  * Everything is jQuery 1.11 Deferreds ($.Deferred / .then(ok, fail)):
  * native Promises would not chain through _rpc's deferreds.

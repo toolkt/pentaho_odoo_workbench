@@ -52,10 +52,11 @@ Usage
 2. **Python API**::
 
     report = self.env.ref('module.report_id')
-    pdf_content, output_type = self.env['ir.actions.report']._render_pentaho(
+    content_b64, output_type, filename, direct_print = self.env['ir.actions.report'].render_report(
         report.id, record_ids,
         {'variables': {'custom_var': 'value'}},
     )
+    pdf_bytes = base64.b64decode(content_b64)
 
 3. **UI action**::
 
