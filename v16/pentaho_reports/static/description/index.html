@@ -1,0 +1,89 @@
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <h2 class="oe_slogan" style="color: #875A7B;">Pentaho Reports — Native Renderer</h2>
+        <h3 class="oe_slogan">Render .prpt reports to PDF entirely inside Odoo</h3>
+        <div class="oe_span12">
+            <p class="oe_mt32">
+                Design reports in Pentaho Report Designer and render them straight
+                from Odoo with a pure-Python engine. No Java, no application server,
+                no external report service — it runs anywhere Odoo runs,
+                including Odoo.sh.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <h3 class="oe_slogan">Key Features</h3>
+        <div class="oe_span6">
+            <ul>
+                <li>Pure-Python renderer for .prpt files — PDF output</li>
+                <li>Page, report and group bands, detail rows, sub-reports</li>
+                <li>Dynamic height, images, custom page sizes</li>
+                <li>Geometry calibrated against the reference Java engine</li>
+            </ul>
+        </div>
+        <div class="oe_span6">
+            <ul>
+                <li>SQL data sources run on Odoo's own database cursor</li>
+                <li>Upload .prpt files or load them from a module path</li>
+                <li>Direct browser printing (Chrome, Firefox, Edge, Safari)</li>
+                <li>Python API and JavaScript action handler</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <h3 class="oe_slogan">Creating a Report</h3>
+        <div class="oe_span12">
+            <p>Declare a report action — the .prpt file stays the source of truth:</p>
+            <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
+&lt;record id="report_invoice_pentaho" model="ir.actions.report"&gt;
+    &lt;field name="name"&gt;Customer Invoice&lt;/field&gt;
+    &lt;field name="model"&gt;account.move&lt;/field&gt;
+    &lt;field name="report_type"&gt;pentaho&lt;/field&gt;
+    &lt;field name="report_name"&gt;account.invoice.pentaho&lt;/field&gt;
+    &lt;field name="pentaho_report_output_type"&gt;pdf&lt;/field&gt;
+    &lt;field name="pentaho_direct_print"&gt;False&lt;/field&gt;
+    &lt;field name="pentaho_filename"&gt;my_module/reports/invoice.prpt&lt;/field&gt;
+    &lt;field name="pentaho_load_file" eval="True"/&gt;
+    &lt;field name="binding_type"&gt;report&lt;/field&gt;
+    &lt;field name="binding_model_id" ref="account.model_account_move"/&gt;
+&lt;/record&gt;</pre>
+            <p>
+                Or create it from the UI: Settings &gt; Technical &gt; Reports,
+                report type "Pentaho Report", and upload the .prpt file.
+            </p>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container oe_dark">
+    <div class="oe_row oe_spaced">
+        <h3 class="oe_slogan">Python API</h3>
+        <div class="oe_span12">
+            <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
+report = self.env.ref('my_module.report_invoice_pentaho')
+content_b64, output_type, filename, direct_print = self.env['ir.actions.report'].render_report(
+    report.id, record_ids,
+    {'variables': {'custom_var': 'value'}},
+)
+pdf_bytes = base64.b64decode(content_b64)</pre>
+        </div>
+    </div>
+</section>
+
+<section class="oe_container">
+    <div class="oe_row oe_spaced">
+        <h3 class="oe_slogan">Requirements</h3>
+        <div class="oe_span12">
+            <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px;">
+• Odoo modules: base, web
+• reportlab (bundled with Odoo)
+• Pentaho Report Designer — only for designing .prpt files</pre>
+        </div>
+    </div>
+</section>

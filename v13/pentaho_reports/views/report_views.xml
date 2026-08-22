@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Add Pentaho fields to report form -->
+    <record id="act_report_xml_pentaho_view" model="ir.ui.view">
+        <field name="name">ir.actions.report.pentaho</field>
+        <field name="model">ir.actions.report</field>
+        <field name="inherit_id" ref="base.act_report_xml_view"/>
+        <field name="arch" type="xml">
+            <field name="report_type" position="after">
+                <field name="pentaho_report_output_type"
+                       attrs="{'invisible': [('report_type', '!=', 'pentaho')], 'required': [('report_type', '=', 'pentaho')]}"/>
+                <field name="pentaho_direct_print"
+                       attrs="{'invisible': ['|', ('report_type', '!=', 'pentaho'), ('pentaho_report_output_type', '!=', 'pdf')]}"
+                       help="Print the report directly in the browser without downloading. Only available for PDF reports."/>
+                <field name="pentaho_file"
+                       filename="pentaho_filename"
+                       attrs="{'invisible': [('report_type', '!=', 'pentaho')], 'required': [('report_type', '=', 'pentaho'), ('pentaho_load_file', '=', False)]}"/>
+                <field name="pentaho_filename" invisible="1"/>
+                <field name="pentaho_load_file" attrs="{'invisible': [('report_type', '!=', 'pentaho')]}"/>
+            </field>
+        </field>
+    </record>
+
+    <!-- Search view filter for Pentaho reports -->
+    <record id="act_report_xml_pentaho_search_view" model="ir.ui.view">
+        <field name="name">ir.actions.report.search.pentaho</field>
+        <field name="model">ir.actions.report</field>
+        <field name="inherit_id" ref="base.act_report_xml_search_view"/>
+        <field name="arch" type="xml">
+            <search position="inside">
+                <filter string="Pentaho Reports"
+                        name="pentaho_reports"
+                        domain="[('report_type', '=', 'pentaho')]"/>
+            </search>
+        </field>
+    </record>
+</odoo>

@@ -2190,13 +2190,13 @@ psql -tAc "select datname from pg_database where datname like 'pentaho_test_%'" 
 ```
 Expected: no rows; `0`.
 
-- [ ] **Step 5: Commit and push**
+- [ ] **Step 5: Commit** (no push — the branch is integrated at the end via finishing-a-development-branch)
 
 ```bash
 git add -A && git commit -m "Add test_matrix.sh acceptance run and root README (Odoo 11-19 matrix)
 
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_019Y7zs91xCuDwsyBGU5coZC" && git push origin main && git log --oneline -1
+Claude-Session: https://claude.ai/code/session_019Y7zs91xCuDwsyBGU5coZC" && git log --oneline -1
 ```
 
 ---
@@ -2211,3 +2211,56 @@ Claude-Session: https://claude.ai/code/session_019Y7zs91xCuDwsyBGU5coZC" && git 
 - §7 matrix steps 1–5: Tasks 4, 6 (harness), 12 ✔ (odoo14 reportlab install in Task 9 Step 1)
 - §8 docs: Task 12 root README, per-folder README from Task 6 onward, `PORT_CHANGES.md` moved in Task 1 ✔
 - Type/name consistency: `_render_pentaho_report(res_ids, data=None)` used identically in Tasks 6, 8, 10, 11 and in the tests' dispatch check; harness script name `tools/odoo_install_test.sh NN` used by Tasks 6–12 ✔
+
+---
+
+### Task 13: Make the repository self-documenting (added 2026-08-21 at the user's request)
+
+**Why:** the repo must stand alone in development — everything about how and why it was made, how to extend it (e.g. a future `v20/`), and how an LLM agent should work in it must live IN the repo, not in a person's or an assistant's memory.
+
+**Files:**
+- Create: `CLAUDE.md` (repo root; also the file Claude Code loads automatically), `docs/ARCHITECTURE.md`, `docs/ADDING-A-VERSION.md`, `docs/DECISIONS.md`, `docs/LESSONS.md`, `docs/HISTORY.md`, `docs/build-log/README.md`, `docs/build-log/2026-08-21-sdd-ledger.md`, `docs/build-log/reports/task-N-report.md` (N = 1..13, copied from `.superpowers/sdd/2026-08-21-per-version-layout/`)
+- Modify: root `README.md` (add a "Documentation map" section linking the above; keep everything else)
+
+**Interfaces:**
+- Consumes: the whole repo as built (read `git log --stat`, the spec, the plan, the API survey, the SDD ledger `.superpowers/sdd/2026-08-21-per-version-layout/progress.md`, every `task-N-report.md`, `tools/*`, every `vNN/pentaho_reports` glue file, `engine/native/COMPAT.md`).
+- Produces: documents only. No code or tool behaviour changes. Every statement must be verifiable against the repo; cite paths.
+
+**Sources of truth the docs must be consistent with (and link to):** `docs/superpowers/specs/2026-08-21-per-version-layout-design.md` (design), `docs/superpowers/specs/2026-08-21-odoo-version-api-survey.md` (per-version API facts with file:line evidence), `docs/superpowers/plans/2026-08-21-per-version-layout.md` (this plan), `docs/PORT_CHANGES.md` (the 2026-08-12 pure-Python fidelity port), `engine/native/COMPAT.md`.
+
+- [ ] **Step 1: `CLAUDE.md` — the entry point for an LLM agent (≤ 150 lines)**
+
+Sections, in this order: (1) *What this repo is* — `pentaho_reports`, pure-Python renderer for Pentaho `.prpt` reports inside Odoo (no Java/Tomcat/external service; Odoo.sh-friendly), shipped as nine per-version folders `v11`…`v19`. (2) *Layout* — the tree from this plan's "File structure" section, one line per entry. (3) *The three rules* — (a) `engine/native/` is the ONLY place engine code is edited; `vNN/pentaho_reports/native/` are synced copies (`python3 tools/sync_native.py`), `python3 tools/check_drift.py` must pass; (b) engine floor is Python 3.6 (`engine/native/COMPAT.md`), glue for v11 too; (c) glue comes in three families — table: family / versions / JS mechanism / assets / view attrs / route type / dispatch hook / create decorator / `ondelete` — copied from `docs/ARCHITECTURE.md`. (4) *How to verify* — `pytest` (engine, from repo root), `tools/engine_matrix.sh`, `tools/odoo_install_test.sh NN`, `tools/test_matrix.sh`; local paths assumed (`/Volumes/Workspace/Development/OdooWorkbench/odooNN/{odoo,venv}`, Postgres roles `odooNN`, throwaway DBs `pentaho_test_vNN`). (5) *How to change things* — engine change: edit → pytest → sync → drift → matrix; glue change: edit the family's reference (v19 for 17–19, v16 for 15–16, v14 for 12–14, v11 alone) then replay to siblings and re-run each sibling's harness; never hand-edit a synced `native/`. (6) *Adding a new Odoo version* → `docs/ADDING-A-VERSION.md`. (7) *Conventions* — `_('…%s') % x` only; BSD `sed -i ''` on macOS; bash 3.2 `${arr[@]+"${arr[@]}"}`; commit trailers used in this repo; fixtures must be credential-scrubbed (`tools/scrub_fixture.py`); don't reformat untouched files. (8) *Where the memory lives* — `docs/HISTORY.md`, `docs/DECISIONS.md`, `docs/LESSONS.md`, `docs/build-log/`.
+
+- [ ] **Step 2: `docs/ARCHITECTURE.md`**
+
+(1) Intention: the problem (Pentaho reports needed a Java server; Odoo.sh cannot run one) and the solution (pure-Python engine; one module per Odoo version). (2) Component map: engine (`bundle.py` parser → `model.py` → `renderer.py`/`painter.py` via reportlab; `query.py` SQL placeholder handling; `fonts.py`, `formats.py`), glue (model, controller routes `/pentaho/preview|download|print`, views, JS, tests), tools. (3) The families table — definitive, filled from the code as built (verify each cell by grepping the nine folders; include: JS file name + mechanism; `_t` source; assets declaration; view attribute syntax; preview route type; `selection_add` `ondelete`; `create` decorator; dispatch hook name + signature; notification API; error-handling idiom (native Promise + `.catch` on 13–14, jQuery Deferred + `(error, event)` on 11–12, OWL registry on 15+)). (4) Data flow of a print: Print menu → JS handler resolves report by `report_name` → `render_report` → `_render_pentaho_report` → `NativeRenderer` → base64 → `/pentaho/download` (with the `fileToken` cookie contract) or Print.js / `/pentaho/print`. (5) Test strategy: engine pytest + fixtures (scrubbed real reports + synthetic `partner_list.prpt`), engine matrix (Python × reportlab), per-version module tests (version-agnostic design: `tagged` fallback, `group_ids`/`groups_id` detection, JSON via `self.opener`, dispatch-shape detection), the install harness and what "PASS" means. (6) Environment matrix table (Odoo → Python → reportlab → harness flags: `--longpolling-port`/`--gevent-port`, `--limit-memory-hard=0` on Darwin <16, PIL shim ≤12, `--test-tags` ≥12). (7) Known limits / out of scope (from the spec §9).
+
+- [ ] **Step 3: `docs/ADDING-A-VERSION.md` — the v20 playbook**
+
+Written so an agent with no other context can do it. (1) *Survey first*: reproduce the per-version API survey for the new version — include the exact questionnaire (the fields of the survey schema: python floor; report-action JS mechanism + how to intercept a custom `report_type` + download helper + block UI + notification + ES-module support; assets declaration; view conditional-attribute syntax + form/search xmlids; JSON route type + `content_disposition` + `make_response`; `model_create_multi`, `selection_add`/`ondelete`, `cr.savepoint()`, `addons_path` type, `has_group`, `res.users.share`, `_()` arity; report model name, `report_type` values, render dispatch name+signature, Binary attachment default, bindings; tests: TransactionCase conventions, HttpCase JSON posting, `tagged`, run command) and the grep starting points (`odoo/http.py`, `odoo/fields.py`, `odoo/api.py`, `addons/base/models/ir_actions_report.py`, `addons/base/models/ir_ui_view.py`, `addons/web/static/src/webclient/actions/action_service.js`, `odoo/tests/common.py`, `odoo/tools/config.py`, `setup.py`). Point at `docs/superpowers/specs/2026-08-21-odoo-version-api-survey.md` for what the answers looked like for 11–19. (2) *Pick the nearest family sibling* (for v20: copy `v19`). (3) *Mechanical edits*: manifest version `20.0.2.0.0`; `migrations/20.0.2.0.0/`; README. (4) *Decision checklist* — for each API point, what to do if the survey answer differs from the sibling (e.g. route type renamed → change decorator; `res.users` field renamed → tests already detect `group_ids`/`groups_id`, extend the detector; `_render` dispatch signature changed → add the new hook shape AND extend `test_core_render_dispatch_finds_pentaho`; view syntax changed → rewrite `views/report_views.xml`; `_get_readable_fields` needed if the JS reads a new action field). (5) *Wire the tooling*: `VERSIONS` in `tools/sync_native.py` and `tools/check_drift.py`; `tools/odoo_install_test.sh` (port `180NN`, flags), `tools/test_matrix.sh` loops, `tools/engine_matrix.sh` (add the new Python × reportlab pair), root README table, `CLAUDE.md` family table. (6) *Prove it*: `python3 tools/sync_native.py && python3 tools/check_drift.py && tools/odoo_install_test.sh 20`, then `tools/test_matrix.sh`. (7) *Engine floor policy*: when the oldest supported version is dropped, raise the floor in `engine/native/COMPAT.md` and the matrix. (8) A worked example: the concrete diff list between v18 and v19 as it exists in the repo (route type, README, manifest, migrations) and between v14 and v15 (the big family jump) — obtained with `diff -r -x __pycache__`.
+
+- [ ] **Step 4: `docs/DECISIONS.md` — decision log**
+
+One entry per decision, format: *Decision — Date — Context — Alternatives considered — Why — Cost if wrong*. Must include: folders not Odoo.sh branches; one engine with nine real copies (not symlinks, not two flavours); Python 3.6 floor (not 3.5, not 3.7+); throwaway DBs as acceptance; `engine/native/` (package keeps import name); vendored + credential-scrubbed fixtures; synthetic `partner_list.prpt` instead of Piaggio-bound tests; version-agnostic module tests; resolve reports by `report_name` in JS; dispatch aliases per version; `fileToken` cookie kept; v19 `jsonrpc`; harness shims (`--limit-memory-hard=0`, PIL `sitecustomize`, pytest.ini testpaths) instead of venv changes — and the single sanctioned venv change (odoo14 reportlab 3.5.55); `.catch` instead of `guardedCatch`; `errorMessage()` + `preventDefault`; every `Ruling:` line from the SDD ledger (`.superpowers/sdd/2026-08-21-per-version-layout/progress.md`), each rewritten as a full entry.
+
+- [ ] **Step 5: `docs/LESSONS.md` — gotchas discovered while building (each: symptom → cause → fix → where it lives in the repo)**
+
+At minimum: Pillow ≥10 removed `Image.ANTIALIAS` and Odoo ≤12 core needs it; Odoo ≤15 `setrlimit(RLIMIT_RSS)` EINVAL on macOS; bash 3.2 + `set -u` + empty arrays; Odoo 13/14 `guardedCatch` skips `Error` rejections; `_rpc` rejection shapes per version (`{message, event}` on 13+, `(error, $.Event())` on 11–12) and `event.preventDefault()` to avoid the double crash dialog; jQuery 1.11 Deferreds don't assimilate native Promises and don't catch thrown errors; Odoo 16+ test mode 400s requests lacking the test-request-key cookie (use `self.opener`); Odoo `--logfile` appends; py3.6's bootstrap pip corrupts Pillow dylibs when upgraded in the same invocation; reportlab 3.5.55 needs `CFLAGS=-Wno-error=implicit-function-declaration` on current Clang; Odoo 19 `group_ids`; Odoo 19 `jsonrpc` route type; `_()` single-arg on 11–13; `ondelete` required from 14; view `attrs` rejected from 17 / python-expr rejected before 17; real `.prpt` files embed DB credentials; duplicate test basenames across synced copies break bare pytest (→ `pytest.ini`); fixtures outside the repo silently erroring; `from __future__ import annotations` hides 3.10-only annotation syntax.
+
+- [ ] **Step 6: `docs/HISTORY.md` + `docs/build-log/`**
+
+`HISTORY.md`: timeline — the original Java-based willowit module; the 2026-08-12 pure-Python renderer + fidelity port (link `docs/PORT_CHANGES.md`); the 2026-08-21 per-version layout (link spec, plan, survey); how it was built (brainstorm → spec → plan → subagent-driven development with a review per task; 9-agent source survey of the local Odoo trees); commit range on `feat/odoo-11-19-layout`. `docs/build-log/README.md` explains what the folder holds. Copy `.superpowers/sdd/2026-08-21-per-version-layout/progress.md` → `docs/build-log/2026-08-21-sdd-ledger.md` and every `task-N-report.md` → `docs/build-log/reports/` (verbatim; these are the exact commands + outputs that proved each step). Do NOT copy the `review-*.diff` packages or brief files (briefs duplicate the plan).
+
+- [ ] **Step 7: README "Documentation map" + cross-check**
+
+Add to the root `README.md` a short section linking `CLAUDE.md` and each `docs/*.md`. Then verify every relative link in the new docs resolves (`grep -o '](\([^)]*\.md[^)]*\))' …` and test each path exists), verify every family-table cell against the code with grep (e.g. `grep -l jsonrpc v*/pentaho_reports/controllers/main.py` must list only v19; `grep -L ondelete v*/pentaho_reports/models/ir_actions_report.py` must list v11–v13; `ls v*/pentaho_reports/static/src/js/` shows `action_manager.js` for 11–14 and `action_service.js` for 15–19), and record the checks in the report.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add CLAUDE.md README.md docs && git commit -m "docs: make the repo self-documenting (CLAUDE.md, architecture, add-a-version playbook, decisions, lessons, history, build log)
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019Y7zs91xCuDwsyBGU5coZC"
+```
