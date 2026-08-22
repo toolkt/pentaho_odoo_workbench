@@ -52,3 +52,15 @@ Engine tests alone: `cd engine/native/tests && python -m pytest` (needs reportla
 ## Contributing a renderer change
 
 1. Edit `engine/native/…` and its tests. 2. `python3 tools/sync_native.py`. 3. `tools/test_matrix.sh`.
+
+## Documentation map
+
+- [`CLAUDE.md`](CLAUDE.md) — the working agreement for this repo (rules, families table, verify/change recipes); loaded automatically by Claude Code.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — intention, component map, the definitive three-family table, print data flow, test strategy, environment matrix, known limits.
+- [`docs/ADDING-A-VERSION.md`](docs/ADDING-A-VERSION.md) — the v20 playbook: survey questionnaire, sibling copy, decision checklist, tooling wiring, proof.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — every decision with context, alternatives, why, and cost-if-wrong (including mid-build review rulings).
+- [`docs/LESSONS.md`](docs/LESSONS.md) — gotchas: symptom → cause → fix → where it lives.
+- [`docs/HISTORY.md`](docs/HISTORY.md) — timeline from the Java-server origins through the fidelity port to this layout.
+- [`docs/PORT_CHANGES.md`](docs/PORT_CHANGES.md) — the 2026-08-12 pure-Python fidelity port (1582/1639 real reports render).
+- [`docs/build-log/`](docs/build-log/README.md) — the verbatim build ledger and per-task evidence reports.
+- [`engine/native/COMPAT.md`](engine/native/COMPAT.md) — the Python 3.6 floor rule.
