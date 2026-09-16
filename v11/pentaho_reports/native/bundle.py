@@ -7,7 +7,7 @@ import io
 import logging
 import zipfile
 import xml.etree.ElementTree as ET
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .model import (
     Band,
@@ -39,8 +39,9 @@ ELEMENT_KINDS = {
 }
 
 # structural / non-element children that may appear inside band content.
-# output-parameter is a sub-report child we don't act on (no parameter
-# passing to sub-reports is implemented). "element-style" is NOT listed here
+# input-/output-parameter children of a <sub-report> element are skipped:
+# the parameter mapping the engine honors is the sub-report's own
+# datadefinition.xml <parameter-mapping>. "element-style" is NOT listed here
 # — every call site that can see it (_parse_band_content, _parse_element)
 # handles it explicitly before consulting this set, so including it here
 # would be dead code.
@@ -101,6 +102,8 @@ class PrptBundle:
         self.query_name = None   # type: Optional[str]
         self.sql = None          # type: Optional[str]
         self.parameters = {}     # type: Dict[str, PlainParameter]
+        # sub-report <input-parameter name alias>: master value → own parameter
+        self.input_mappings = []  # type: List[Tuple[str, str]]
 
     # ── construction ────────────────────────────────────────
 
@@ -117,7 +120,39 @@ class PrptBundle:
         bundle._parse_styles(ET.fromstring(zf.read(prefix + "styles.xml")))
         bundle._parse_layout(ET.fromstring(zf.read(prefix + "layout.xml")))
         bundle._parse_datadefinition(ET.fromstring(zf.read(prefix + "datadefinition.xml")))
+        bundle._inherit_text_styles()
         return bundle
+
+    def _inherit_text_styles(self) -> None:
+        """Pass text styles down report root → band → nested band → element.
+
+        An element inherits every font property it does not set itself, as
+        in the Java engine (e.g. an <details-footer> band's font-face="Arial"
+        applies to its labels).
+        """
+        def inherit(style: Style, parent: Style) -> None:
+            explicit = getattr(style, "explicit_text", ())
+            for key in Style.INHERITED_TEXT:
+                if key not in explicit:
+                    setattr(style, key, getattr(parent, key))
+
+        def walk(band_style: Style, elements, parent: Style) -> None:
+            inherit(band_style, parent)
+            for el in elements:
+                inherit(el.style, band_style)
+                if el.kind == "band":
+                    walk(el.style, el.elements, band_style)
+
+        root = self.root_style
+        bands = [self.watermark, self.page_header, self.page_footer,
+                 self.report_header, self.report_footer]
+        group = self.group
+        while group is not None:
+            bands.extend([group.header, group.footer, group.details, group.no_data,
+                          group.details_header, group.details_footer])
+            group = group.child
+        for band in bands:
+            walk(band.style, band.elements, root)
 
     # ── styles.xml: page setup + page bands ─────────────────
 
@@ -184,7 +219,11 @@ class PrptBundle:
                         group.details = self._root_level_band(sub)
                     elif sname == "no-data":
                         group.no_data = self._root_level_band(sub)
-                    elif sname in ("details-header", "details-footer", "element-style"):
+                    elif sname == "details-header":
+                        group.details_header = self._section_band(sub)
+                    elif sname == "details-footer":
+                        group.details_footer = self._section_band(sub)
+                    elif sname == "element-style":
                         continue
                     else:
                         raise UnsupportedFeature("data-body section %r" % sname)
@@ -225,6 +264,18 @@ class PrptBundle:
                 return self._parse_band_content(child)
         return Band()
 
+    def _section_band(self, node) -> Band:
+        """A band whose elements may sit directly in the section tag.
+
+        Report Designer writes <details-header>/<details-footer> content
+        straight under the section (no <root-level-content> wrapper, e.g.
+        tk_purchase_order_form.prpt); accept the wrapped form too.
+        """
+        for child in node:
+            if _local(child.tag) == "root-level-content":
+                return self._parse_band_content(child)
+        return self._parse_band_content(node)
+
     def _parse_band_content(self, node) -> Band:
         band = Band()
         for child in node:
@@ -257,6 +308,12 @@ class PrptBundle:
                 el.style = self._parse_style(child)
             elif cname == "value":
                 el.value = child.text or ""
+            elif cname == "style-expression":
+                # per-row styling formula, e.g. border-top-style =
+                # IF(ISBLANK([ceo]); "none"; "solid") — evaluated at render
+                ea = _attrs_by_local(child)
+                if ea.get("style-key") and ea.get("formula"):
+                    el.style_expressions.append((ea["style-key"], ea["formula"]))
             elif _is_ignorable_child(cname):
                 # dynamic expressions / structural children we don't model —
                 # see _is_ignorable_child. Checked before the band-recursion
@@ -303,9 +360,19 @@ class PrptBundle:
                 el.subreport = None
             else:
                 el.subreport = PrptBundle._from_zip(self._zf, sub_prefix)
-                # the Java engine indents a banded sub-report by its root
-                # layout x but ignores the root y (the band flows vertically)
-                if not el.style.x:
+                own_spatial = any(
+                    _local(part.tag) == "spatial-styles"
+                    for style_node in node if _local(style_node.tag) == "element-style"
+                    for part in style_node)
+                if not own_spatial:
+                    # no placement of its own: the Java engine places the
+                    # sub-report by its root layout style, x and y
+                    # (tk_prs_form.prpt's signature sub-report: y=12)
+                    el.style.x = el.subreport.root_style.x
+                    el.style.y = el.subreport.root_style.y
+                elif not el.style.x:
+                    # a placed banded sub-report is indented by its root
+                    # layout x but ignores the root y (the band flows vertically)
                     el.style.x = el.subreport.root_style.x
         return el
 
@@ -337,19 +404,31 @@ class PrptBundle:
                 style.x = _to_float(a.get("x"))
                 style.y = _to_float(a.get("y"))
                 style.width = _to_float(a.get("min-width"))
+                mw = a.get("min-width")
+                if mw and mw.endswith("%") and mw[:-1]:
+                    style.width_pct = float(mw[:-1])
                 mh = a.get("min-height")
                 if mh and mh.endswith("%"):
                     style.height_pct = float(mh[:-1])
                 else:
                     style.height = _to_float(mh)
             elif pname == "text-styles":
-                style.font_face = a.get("font-face", style.font_face)
+                explicit = style.__dict__.setdefault("explicit_text", set())
+                if "font-face" in a:
+                    style.font_face = a["font-face"]
+                    explicit.add("font_face")
                 if a.get("font-size"):
                     style.font_size = float(a["font-size"])
-                style.bold = a.get("bold") == "true" or style.bold
-                style.italic = a.get("italic") == "true" or style.italic
-                style.underline = a.get("underline") == "true" or style.underline
+                    explicit.add("font_size")
+                for attr in ("bold", "italic", "underline"):
+                    if attr in a:
+                        setattr(style, attr, a[attr] == "true")
+                        explicit.add(attr)
+            elif pname == "band-styles":
+                style.layout = a.get("layout", style.layout)
             elif pname == "common-styles":
+                if "visible" in a:
+                    style.visible = a["visible"] != "false"
                 style.align = a.get("alignment", style.align)
                 style.valign = a.get("vertical-alignment", style.valign)
                 # dynamic-height may live here or in content-styles
@@ -382,6 +461,8 @@ class PrptBundle:
         for side in ("top", "bottom", "left", "right"):
             width = _to_float(a.get("border-%s-width" % side), _to_float(all_width))
             bstyle = a.get("border-%s-style" % side) or all_style
+            if width > 0:
+                style.border_widths[side] = width
             # a side is drawable only when it has both a width and a style
             if width > 0 and bstyle and bstyle != "none":
                 style.borders[side] = BorderSide(width=width, style=bstyle)
@@ -412,6 +493,14 @@ class PrptBundle:
                         },
                     )
                     self.parameters[param.name] = param
+            elif name == "parameter-mapping":
+                for p in child:
+                    if _local(p.tag) != "input-parameter":
+                        continue  # output-parameter: results never flow back up
+                    a = _attrs_by_local(p)
+                    source = a.get("name", "")
+                    if source:
+                        self.input_mappings.append((source, a.get("alias") or source))
             elif name == "data-source":
                 query_name = _attrs_by_local(child).get("report-query")
 
@@ -460,6 +549,7 @@ class PrptBundle:
         # leaf group at the bottom of the chain carries the real content.
         group = self.group
         while group is not None:
-            bands.extend([group.header, group.footer, group.details, group.no_data])
+            bands.extend([group.header, group.footer, group.details, group.no_data,
+                          group.details_header, group.details_footer])
             group = group.child
         return any(walk(b.elements) for b in bands)

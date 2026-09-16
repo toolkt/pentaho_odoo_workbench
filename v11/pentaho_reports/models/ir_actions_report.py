@@ -4,6 +4,8 @@ import base64
 import logging
 import os
 
+import psycopg2.extensions
+
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 from odoo.tools import config
@@ -126,6 +128,33 @@ class IrActionsReport(models.Model):
         parameters.update(variables)
         return parameters
 
+    def _pentaho_execute_query(self, sql, params):
+        """Run one report query → list of dicts, NUMERIC values kept Decimal.
+
+        Odoo casts NUMERIC to float on every cursor, which drops the column
+        scale the Java engine prints (a numeric(…,2) text-field reads "30.00",
+        not "30.0"). The query runs on a side cursor of the same connection —
+        same transaction and snapshot — with psycopg2's stock Decimal cast,
+        inside a savepoint so a bad query cannot poison the transaction.
+        """
+        cr = self.env.cr
+        # HttpCase's TestCursor (12+) wraps the real cursor as `_cursor`
+        cnx = getattr(cr, '_cnx', None) or getattr(getattr(cr, '_cursor', None), '_cnx', None)
+        with cr.savepoint():
+            if cnx is None:
+                cr.execute(sql, params)
+                return cr.dictfetchall()
+            raw = cnx.cursor()
+            try:
+                psycopg2.extensions.register_type(psycopg2.extensions.DECIMAL, raw)
+                raw.execute(sql, params)
+                if raw.description is None:
+                    return []
+                columns = [col[0] for col in raw.description]
+                return [dict(zip(columns, row)) for row in raw.fetchall()]
+            finally:
+                raw.close()
+
     def _render_pentaho_report(self, res_ids, data=None):
         """Render this .prpt report in-process → (report_bytes, output_type).
 
@@ -137,16 +166,10 @@ class IrActionsReport(models.Model):
         if self.report_type != 'pentaho':
             raise UserError(_('Report %s is not a Pentaho report') % self.report_name)
 
-        def execute_query(sql, params):
-            # savepoint so a bad query cannot poison the surrounding transaction
-            with self.env.cr.savepoint():
-                self.env.cr.execute(sql, params)
-                return self.env.cr.dictfetchall()
-
         output_type = ((data or {}).get('output_type')
                        or self.pentaho_report_output_type or 'pdf')
         try:
-            rendered = NativeRenderer(execute_query).render(
+            rendered = NativeRenderer(self._pentaho_execute_query).render(
                 self._pentaho_prpt_content(),
                 self._pentaho_parameters(res_ids, data),
                 output_type)

@@ -10,7 +10,8 @@ folders `v11/pentaho_reports` … `v19/pentaho_reports` sharing one canonical en
 ## Layout
 
 - `engine/native/` — the ONE canonical renderer (`bundle.py` parser, `model.py`,
-  `renderer.py`, `painter.py`, `query.py`, `fonts.py`, `formats.py`) + its pytest suite.
+  `renderer.py`, `painter.py`, `query.py`, `fonts.py`, `formats.py`, `formula.py`) + its
+  pytest suite.
 - `vNN/pentaho_reports/` — per-version module: `models/ir_actions_report.py`,
   `controllers/main.py`, `views/report_views.xml` (+ `views/assets.xml` on 11–14),
   `static/src/js/`, `migrations/NN.0.2.0.0/`, `tests/`, and a synced `native/` copy.
@@ -43,7 +44,12 @@ folders `v11/pentaho_reports` … `v19/pentaho_reports` sharing one canonical en
 | error idiom | jQuery Deferred `(error, event)` + `preventDefault` (11–12); Promise `.catch` + `errorMessage()` (13–14) | OWL handler | OWL handler |
 
 Every version also has the shared core: `render_report(report_id, res_ids, data)` →
-`_render_pentaho_report(res_ids, data=None)` → `NativeRenderer`.
+`_render_pentaho_report(res_ids, data=None)` → `NativeRenderer(self._pentaho_execute_query)`
+(report SQL on a side cursor of Odoo's connection that keeps NUMERIC as `Decimal`).
+
+**Fidelity reference = the Java engine's actual output.** When a report renders
+differently, render the same `.prpt` + data with the Java server and compare pages,
+text and ink before changing the engine (see `docs/LESSONS.md`, 2026-09-17).
 
 ## How to verify
 

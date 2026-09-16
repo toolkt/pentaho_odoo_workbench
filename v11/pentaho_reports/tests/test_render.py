@@ -99,3 +99,13 @@ class TestPentahoRender(TransactionCase):
         content, output_type = out
         self.assertEqual(output_type, 'pdf')
         self.assertTrue(content.startswith(b'%PDF'))
+
+    def test_report_queries_keep_numeric_scale(self):
+        # the Java engine reads NUMERIC as BigDecimal ("30.00"); Odoo's own
+        # cursor turns it into a float, which must stay true outside reports
+        rows = self.Report._pentaho_execute_query(
+            "SELECT 30.00::numeric AS qty, %s::int AS n", [7])
+        self.assertEqual(str(rows[0]['qty']), '30.00')
+        self.assertEqual(rows[0]['n'], 7)
+        self.env.cr.execute("SELECT 30.00::numeric")
+        self.assertIsInstance(self.env.cr.fetchone()[0], float)

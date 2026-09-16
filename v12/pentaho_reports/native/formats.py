@@ -151,3 +151,40 @@ def format_value(value, pattern: Optional[str]) -> str:
             return value.strftime("%Y-%m-%d %H:%M:%S")
         return value.strftime("%Y-%m-%d")
     return str(value)
+
+
+def _java_double_to_string(d: float) -> str:
+    """Java's Double.toString: plain notation in [1e-3, 1e7), else d.dddE±n."""
+    if d != d:
+        return "NaN"
+    if d in (float("inf"), float("-inf")):
+        return "Infinity" if d > 0 else "-Infinity"
+    if d == 0:
+        return "0.0"
+    if 1e-3 <= abs(d) < 1e7:
+        text = format(Decimal(repr(d)), "f")
+        return text if "." in text else text + ".0"
+    sign, digits, exponent = Decimal(repr(d)).normalize().as_tuple()
+    digits = "".join(map(str, digits))
+    power = len(digits) - 1 + exponent
+    return "%s%s.%sE%d" % ("-" if sign else "", digits[0], digits[1:] or "0", power)
+
+
+def format_text_value(value) -> str:
+    """A text-field without a format-string prints String.valueOf(value).
+
+    Unlike a number-field, that keeps a numeric(…, 2) column's scale
+    ("2.00", as BigDecimal.toString does — Python's Decimal str follows the
+    same rules) and prints doubles the way Java does ("2.0").
+    """
+    if value is None or value is False:
+        return ""
+    if isinstance(value, bool):
+        return "true"
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, float):
+        return _java_double_to_string(value)
+    if isinstance(value, int):
+        return str(value)
+    return format_value(value, None)

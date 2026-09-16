@@ -89,3 +89,48 @@ Each: **symptom → cause → fix → where it lives**.
   real `self.cr.commit()` in the user fixture; safe only because the DB is
   throwaway; committed users outlive the test, so logins are unique per run →
   `v11/…/tests/test_controllers.py`.
+
+## 2026-09-17 — Java-server parity (NextAsia Land)
+
+- **Line items print on top of each other** → the details band has no height of its
+  own; every cell is `min-height="100%"` + `dynamic-height="true"`, and a percentage
+  height counted as 0 → a dynamic percentage-height text cell contributes its
+  measured text height → `renderer._element_height`.
+
+- **"Nothing Follows", GRAND TOTAL, "Received By" missing** → `details-footer` (and
+  `details-header`) were skipped, and Report Designer writes their elements directly
+  under the section tag (no `<root-level-content>`) → `bundle._section_band` +
+  `Group.details_header/details_footer`.
+
+- **Delivery Receipt shows only its header** → the whole line grid and signature block
+  live in the `<watermark>` band (styles.xml), which was parsed but never painted →
+  paint the watermark first on every page, taking no flow space → `_Flow._start_page`.
+
+- **Empty report downloads as a broken PDF** → reportlab drops a page nothing was
+  drawn on, producing a 0-page PDF; Java returns one blank page → `showPage()` when
+  page 1 is empty → `NativeRenderer.render`.
+
+- **Serif text where Java prints Arial; different glyphs on Odoo.sh** → text styles
+  weren't inherited from the enclosing band (unset face → Serif), and Arial resolved
+  to whatever TTF the host had → band→element text-style inheritance
+  (`bundle._inherit_text_styles`) + base-14 Helvetica (`fonts.resolve`).
+
+- **Quantities print `2` / `30.0` instead of `2.00`** → text-fields went through the
+  number-field default format, and Odoo's cursor casts NUMERIC to float → Java
+  `String.valueOf` semantics for text-fields (`formats.format_text_value`) + a
+  Decimal side cursor in the glue (`_pentaho_execute_query`). Benchmarks that query
+  with raw psycopg2 see Decimals and hide the Odoo half — render through Odoo too.
+
+- **Same report, different line order on two copies of one database** → the report
+  SQL has no `ORDER BY`, so rows come out in physical order, which a dump/restore
+  changes → not an engine bug: add `ORDER BY` to the `.prpt` query (Odoo's `_order`
+  for the line model), and bump the client module version so its report XML
+  (`pentaho_load_file`) reloads the file.
+
+- **Grep says Odoo 19 has no `cursor._cnx`** → it's annotated
+  (`self._cnx: PsycoConnection = …`) → grep `self._cnx` without `=`.
+
+- **`tools/odoo_install_test.sh`: `createdb: command not found`** → Postgres.app's
+  client tools aren't on a non-login shell's PATH → prefix
+  `/Applications/Postgres.app/Contents/Versions/latest/bin` before running
+  `tools/test_matrix.sh`.

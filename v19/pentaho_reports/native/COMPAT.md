@@ -9,8 +9,9 @@ target, Odoo 11, runs on **Python 3.6.8**, so everything here must import and ru
 - no walrus (`:=`), no positional-only parameters, no `str.removeprefix`,
   no `functools.cached_property`, no `math.prod/dist`, no `zoneinfo`.
 - f-strings are fine (3.6).
-- reportlab: stay on the API slice used today (`pdfgen.canvas`, `pdfbase.pdfmetrics`,
-  `pdfbase.ttfonts.TTFont`, `lib.colors`, `lib.utils.ImageReader`,
+- reportlab: stay on the API slice used today (`pdfgen.canvas`, `pdfbase.pdfmetrics`
+  with the base-14 fonts only — no TTF embedding, see `fonts.py`, `lib.colors`,
+  `lib.utils.ImageReader`,
   `graphics.barcode.createBarcodeDrawing`); it is exercised against reportlab 3.5 → 5.0
   by `tools/engine_matrix.sh`.
 

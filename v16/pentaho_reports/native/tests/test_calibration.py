@@ -52,11 +52,14 @@ def expected_baselines(probe):
 
 
 def test_max_ascent_matches_reference_constants():
-    # ground truth measured from the Java engine calibration render
-    assert max_ascent(fonts.resolve("Arial", False, False), 10) == pytest.approx(10.06, abs=0.02)
-    assert max_ascent(fonts.resolve("Arial", True, False), 10) == pytest.approx(10.10, abs=0.02)
-    assert max_ascent(fonts.resolve("Arial", True, False), 16) == pytest.approx(16.16, abs=0.03)
-    assert max_ascent(fonts.resolve("Arial", False, False), 8) == pytest.approx(8.05, abs=0.02)
+    # Arial is written as base-14 Helvetica, as the production Java server
+    # (Tomcat on Linux, no Arial installed) does — its benchmark renders
+    # overlay the native output pixel for pixel. The 2026-08-07 macOS
+    # calibration had real Arial (asc 10.06 / 10.10 / 16.16 / 8.05).
+    assert max_ascent(fonts.resolve("Arial", False, False), 10) == pytest.approx(9.31, abs=0.02)
+    assert max_ascent(fonts.resolve("Arial", True, False), 10) == pytest.approx(9.62, abs=0.02)
+    assert max_ascent(fonts.resolve("Arial", True, False), 16) == pytest.approx(15.39, abs=0.03)
+    assert max_ascent(fonts.resolve("Arial", False, False), 8) == pytest.approx(7.45, abs=0.02)
     assert max_ascent(fonts.resolve(None, False, False), 10) == pytest.approx(8.98, abs=0.02)
 
 
@@ -83,10 +86,9 @@ def test_line_advance_is_font_size(rendered):
         assert b - a == pytest.approx(8.0, abs=0.05)
 
 
-@pytest.mark.skipif(not fonts.resolve("Arial", False, False).startswith("Prpt"),
-                    reason="real Arial not available; wrap points may differ")
 def test_wrap_counts_match_reference(rendered):
-    # observed in the Java engine calibration render with real Arial
+    # observed in the Java engine calibration render with real Arial; Helvetica
+    # has the same advance widths, so the wrap points hold for base-14 output
     counts = {"W1": 4, "W2": 4, "W3": 3, "W4": 4}
     for probe in PROBES:
         pid = probe[0].split()[0]
