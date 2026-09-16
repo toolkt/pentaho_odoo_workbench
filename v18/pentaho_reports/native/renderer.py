@@ -5,16 +5,19 @@ Piaggio reports use: page bands repeat on every page, the report header
 renders once, one optional group partitions consecutive rows, detail rows
 flow with page breaks, and the report footer flows after the last row.
 """
+import copy
 import io
 from typing import List, Optional
 
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen import canvas as rl_canvas
 
 from .bundle import PrptBundle
-from .model import Band, Element, Group, UnsupportedFeature
+from .formula import FormulaError, evaluate as evaluate_formula
+from .model import Band, BorderSide, Element, Group, UnsupportedFeature
 from .painter import Painter
 from .query import prepare_sql
-from .formats import format_value
+from .formats import format_text_value, format_value
 
 
 def _leaf_group(group: Group) -> Group:
@@ -54,6 +57,10 @@ class NativeRenderer:
         self._emit_report(flow, bundle, rows, parameters)
 
         flow.finish()
+        if c.getPageNumber() == 1 and not c._code:
+            # reportlab drops a page nothing was drawn on; the Java engine
+            # returns an empty report as one blank page, never a 0-page PDF
+            c.showPage()
         c.save()
         return buf.getvalue()
 
@@ -62,15 +69,21 @@ class NativeRenderer:
     def _fetch_rows(self, bundle: PrptBundle, parameters: dict) -> List[dict]:
         if not bundle.sql or not bundle.has_data_bound_elements():
             return []
-        # sub-report bands are measured and painted separately: cache per
-        # bundle so each query hits the database once per render
-        cache = getattr(self, "_rows_cache", None)
-        if cache is not None and id(bundle) in cache:
-            return cache[id(bundle)]
         sql, params = prepare_sql(bundle.sql, parameters)
+        # sub-report bands are measured and painted separately: cache per
+        # bundle + bound parameters so each distinct query hits the database
+        # once per render (a mapped sub-report gets new parameters per row)
+        cache = getattr(self, "_rows_cache", None)
+        try:
+            key = (id(bundle), tuple(params))
+            hash(key)
+        except TypeError:
+            key = None
+        if cache is not None and key is not None and key in cache:
+            return cache[key]
         rows = list(self.execute_query(sql, params))
-        if cache is not None:
-            cache[id(bundle)] = rows
+        if cache is not None and key is not None:
+            cache[key] = rows
         return rows
 
     # ── band sequence ───────────────────────────────────────
@@ -105,8 +118,12 @@ class NativeRenderer:
             if group.child is not None:
                 self._emit_group(flow, group.child, part, subrenderer)
             else:
+                if group.details_header.elements:
+                    flow.emit(group.details_header, part[0], subrenderer=subrenderer)
                 for row in part:
                     flow.emit(group.details, row, subrenderer=subrenderer)
+                if group.details_footer.elements:
+                    flow.emit(group.details_footer, part[-1], subrenderer=subrenderer)
             flow.emit(group.footer, part[-1], subrenderer=subrenderer)
 
     @staticmethod
@@ -129,35 +146,76 @@ class NativeRenderer:
     def _subreport_emitter(self, parameters: dict):
         def emit_subreport(sub: PrptBundle, painter: Painter, origin_x: float, origin_y: float,
                            master_row: dict) -> float:
-            rows = self._fetch_rows(sub, parameters)
+            if sub is None:
+                return 0.0
+            sub_parameters = _subreport_parameters(sub, parameters, master_row)
+            rows = self._fetch_rows(sub, sub_parameters)
             first = rows[0] if rows else dict(master_row)
             last = rows[-1] if rows else dict(master_row)
+            # nested sub-reports map from this sub-report's parameters
+            inner = self._subreport_emitter(sub_parameters)
             # sub-reports have never honored group header/footer/partitioning
             # (only the details band, for every row) — preserved as-is here.
             # A nested (group-body) sub-report group has no details of its
             # own, so resolve down to the leaf group's details band.
             leaf = _leaf_group(sub.group)
             y = origin_y
-            y += _paint_band(sub.report_header, painter, origin_x, y, first, emit_subreport)
+            y += _paint_band(sub.report_header, painter, origin_x, y, first, inner)
+            if rows:
+                y += _paint_band(leaf.details_header, painter, origin_x, y, first, inner)
             for row in rows:
-                y += _paint_band(leaf.details, painter, origin_x, y, row, emit_subreport)
-            y += _paint_band(sub.report_footer, painter, origin_x, y, last, emit_subreport)
+                y += _paint_band(leaf.details, painter, origin_x, y, row, inner)
+            if rows:
+                y += _paint_band(leaf.details_footer, painter, origin_x, y, last, inner)
+            y += _paint_band(sub.report_footer, painter, origin_x, y, last, inner)
             return y - origin_y
 
         def measure_subreport(sub: PrptBundle, origin_x: float, master_row: dict,
                               measurer) -> float:
-            rows = self._fetch_rows(sub, parameters)
+            if sub is None:
+                return 0.0
+            sub_parameters = _subreport_parameters(sub, parameters, master_row)
+            rows = self._fetch_rows(sub, sub_parameters)
             first = rows[0] if rows else dict(master_row)
             last = rows[-1] if rows else dict(master_row)
+            inner = self._subreport_emitter(sub_parameters)
             leaf = _leaf_group(sub.group)
-            total = measurer(sub.report_header, first)
+            total = measurer(sub.report_header, first, inner)
+            if rows:
+                total += measurer(leaf.details_header, first, inner)
             for row in rows:
-                total += measurer(leaf.details, row)
-            total += measurer(sub.report_footer, last)
+                total += measurer(leaf.details, row, inner)
+            if rows:
+                total += measurer(leaf.details_footer, last, inner)
+            total += measurer(sub.report_footer, last, inner)
             return total
 
         emit_subreport.measure = measure_subreport
         return emit_subreport
+
+
+def _subreport_parameters(sub: PrptBundle, parameters: dict, master_row: dict) -> dict:
+    """The parameters a sub-report query sees, per its <parameter-mapping>.
+
+    Each ``<input-parameter name alias>`` copies the master's current row
+    field (or, failing that, master parameter) ``name`` into the sub-report
+    as ``alias``; ``name="*"`` imports every master field and parameter under
+    its own name. A mapped source the master does not have arrives as NULL,
+    as in the Java engine. The master's parameters (ids, user_id, ...) stay
+    visible so bundles without a mapping keep working as before.
+    """
+    mappings = getattr(sub, "input_mappings", None)
+    if not mappings:
+        return parameters
+    master = dict(parameters)
+    master.update(master_row or {})
+    sub_parameters = dict(parameters)
+    for source, alias in mappings:
+        if source == "*":
+            sub_parameters.update(master)
+        else:
+            sub_parameters[alias] = master.get(source)
+    return sub_parameters
 
 
 # ── band measurement & painting ─────────────────────────────
@@ -167,6 +225,8 @@ def _element_text(el: Element, row: dict) -> str:
     if el.kind == "label":
         return el.value or ""
     value = row.get(el.field) if el.field else None
+    if el.kind == "text-field" and not el.fmt:
+        return format_text_value(value)
     return format_value(value, el.fmt)
 
 
@@ -176,10 +236,44 @@ def _side_inset(style, side: str) -> float:
     return style.padding.get(side, 0.0) + (border.width if border else 0.0)
 
 
+def _row_styled(el: Element, row: dict) -> Element:
+    """The element with its style-expression formulas applied for this row.
+
+    Supports the keys the bundles use: visible and border-<side>-style (a
+    border whose style comes only from a formula keeps its parsed width).
+    A formula outside the supported subset leaves the static style alone.
+    """
+    if not el.style_expressions:
+        return el
+    styled = copy.copy(el)
+    styled.style = copy.copy(el.style)
+    styled.style.borders = dict(el.style.borders)
+    for key, formula in el.style_expressions:
+        try:
+            value = evaluate_formula(formula, row)
+        except FormulaError:
+            continue
+        if key == "visible":
+            styled.style.visible = value is True or str(value).lower() == "true"
+        elif key.startswith("border-") and key.endswith("-style"):
+            side = key[len("border-"):-len("-style")]
+            width = el.style.border_widths.get(side, 0.0)
+            if value in (None, False, "", "none") or not width:
+                styled.style.borders.pop(side, None)
+            else:
+                styled.style.borders[side] = BorderSide(width=width, style=str(value))
+    return styled
+
+
 def _band_height(band: Band, painter: Painter, row: dict, measure_sub=None) -> float:
     """Height of a band instance = max bottom edge of its content (+ insets)."""
+    if not band.style.visible:
+        return 0.0
     content = 0.0
     for el in band.elements:
+        el = _row_styled(el, row)
+        if not el.style.visible:
+            continue  # invisible elements take no space (Java default)
         content = max(content, el.style.y + _element_height(el, painter, row, measure_sub))
     if band.elements:
         content += _side_inset(band.style, "top") + _side_inset(band.style, "bottom")
@@ -193,11 +287,20 @@ def _element_height(el: Element, painter: Painter, row: dict, measure_sub=None) 
     if el.kind == "sub-report":
         if measure_sub is None:
             return 0.0
-        def measurer(band: Band, band_row: dict) -> float:
-            return _band_height(band, painter, band_row, measure_sub)
+        def measurer(band: Band, band_row: dict, sub_emitter=None) -> float:
+            return _band_height(band, painter, band_row,
+                                measure_sub if sub_emitter is None else sub_emitter)
         return measure_sub.measure(el.subreport, el.style.x, row, measurer)
     if el.style.height_pct is not None:
-        return 0.0  # resolved against the containing band, contributes nothing
+        # a percentage min-height resolves against the containing band, so it
+        # contributes nothing on its own — but dynamic-height text still grows
+        # to fit its content and pushes the band taller (a details row built
+        # only from "100%" cells is as tall as its tallest cell)
+        if el.style.dynamic_height and el.kind in ("label", "text-field", "number-field", "date-field"):
+            text = _element_text(el, row)
+            if text:
+                return painter.measure_text(text, el.style, el.style.width)
+        return 0.0
     height = el.style.height
     if el.style.dynamic_height and el.kind in ("label", "text-field", "number-field", "date-field"):
         text = _element_text(el, row)
@@ -207,7 +310,10 @@ def _element_height(el: Element, painter: Painter, row: dict, measure_sub=None) 
 
 
 def _paint_band(band: Band, painter: Painter, origin_x: float, origin_y: float, row: dict,
-                emit_sub=None) -> float:
+                emit_sub=None, avail_w: Optional[float] = None) -> float:
+    """avail_w: width the band may fill (page content width for top-level bands)."""
+    if not band.style.visible:
+        return 0.0
     band_h = _band_height(band, painter, row, emit_sub)
     band_box = (origin_x + band.style.x, origin_y, band.style.width, band_h)
     if band.style.width:
@@ -215,13 +321,63 @@ def _paint_band(band: Band, painter: Painter, origin_x: float, origin_y: float, 
 
     cx = origin_x + band.style.x + _side_inset(band.style, "left")
     cy = origin_y + _side_inset(band.style, "top")
+    inner_w = _inner_width(band.style, band.style.width or avail_w)
     for el in band.elements:
-        _paint_element(el, painter, cx, cy, band_h, row, emit_sub)
+        _paint_element(el, painter, cx, cy, band_h, row, emit_sub, inner_w)
     return band_h
 
 
+def _inner_width(style, width: Optional[float]) -> Optional[float]:
+    if not width:
+        return None
+    return width - _side_inset(style, "left") - _side_inset(style, "right")
+
+
+def _natural_width(el: Element, painter: Painter, row: dict) -> float:
+    """Width an inline child takes when it sets none: its text plus insets."""
+    if el.style.width or el.kind not in ("label", "text-field", "number-field", "date-field"):
+        return el.style.width
+    font, size = painter._font(el.style)
+    return (pdfmetrics.stringWidth(_element_text(el, row), font, size)
+            + _side_inset(el.style, "left") + _side_inset(el.style, "right"))
+
+
+def _paint_flow_children(el: Element, painter: Painter, x: float, y: float, width: float,
+                        band_h: float, row: dict, emit_sub=None) -> None:
+    """Children of a row/inline band sit side by side, left to right, their
+    own x ignored.
+
+    layout="row": each child takes its min-width, from the band's left edge
+    (ap_voucher.prpt's journal-line column captions).
+    layout="inline": each child is as wide as its content and the line is
+    placed by the band's alignment (ap_voucher.prpt: "Bill Total : Php " +
+    the amount, right-aligned).
+    """
+    children = [c for c in (_row_styled(c, row) for c in el.elements) if c.style.visible]
+    inline = el.style.layout == "inline"
+    widths = [_natural_width(c, painter, row) if inline else c.style.width for c in children]
+    offset = 0.0
+    if inline:
+        inner_w = _inner_width(el.style, width) or sum(widths)
+        slack = max(0.0, inner_w - sum(widths))
+        align = el.style.align or "left"
+        offset = slack if align == "right" else slack / 2.0 if align == "center" else 0.0
+    cx = x + _side_inset(el.style, "left") + offset
+    cy = y + _side_inset(el.style, "top")
+    for child, child_w in zip(children, widths):
+        placed = copy.copy(child)
+        placed.style = copy.copy(child.style)
+        placed.style.x, placed.style.width = 0.0, child_w
+        _paint_element(placed, painter, cx, cy, band_h, row, emit_sub)
+        cx += child_w
+
+
 def _paint_element(el: Element, painter: Painter, origin_x: float, origin_y: float,
-                   band_h: float, row: dict, emit_sub=None) -> None:
+                   band_h: float, row: dict, emit_sub=None,
+                   avail_w: Optional[float] = None) -> None:
+    el = _row_styled(el, row)
+    if not el.style.visible:
+        return
     x = origin_x + el.style.x
     y = origin_y + el.style.y
 
@@ -229,13 +385,20 @@ def _paint_element(el: Element, painter: Painter, origin_x: float, origin_y: flo
         inner = Band(elements=el.elements, style=el.style)
         # nested band: origin shifts by position + its own insets
         nested_h = _band_height(inner, painter, row, emit_sub)
-        box = (x, y, el.style.width, nested_h)
+        width = el.style.width
+        if el.style.width_pct is not None and avail_w:
+            width = avail_w * el.style.width_pct / 100.0 - el.style.x
+        box = (x, y, width, nested_h)
         painter.fill_background(box, el.style)
         painter.draw_borders(box, el.style)
+        if el.style.layout in ("inline", "row"):
+            _paint_flow_children(el, painter, x, y, width, nested_h, row, emit_sub)
+            return
         cx = x + _side_inset(el.style, "left")
         cy = y + _side_inset(el.style, "top")
+        inner_w = _inner_width(el.style, width)
         for child in el.elements:
-            _paint_element(child, painter, cx, cy, nested_h, row, emit_sub)
+            _paint_element(child, painter, cx, cy, nested_h, row, emit_sub, inner_w)
         return
 
     if el.kind == "sub-report":
@@ -297,6 +460,12 @@ class _Flow:
         self.cursor = None  # type: Optional[float]  — None → page not started yet
 
     def _start_page(self) -> None:
+        # the watermark sits behind everything on every page and takes no
+        # space in the flow (delivery_receipt_owner.prpt draws its whole
+        # line grid and signature block there)
+        if self.bundle.watermark.elements:
+            _paint_band(self.bundle.watermark, self.painter, self.margin_left, self.margin_top,
+                        self.page_band_row)
         _paint_band(self.bundle.page_header, self.painter, self.margin_left, self.margin_top,
                     self.page_band_row)
         if self.bundle.page_footer.elements:
@@ -313,7 +482,9 @@ class _Flow:
         elif self.cursor + height > self.content_bottom and self.cursor > self.content_top:
             self.painter.c.showPage()
             self._start_page()
-        _paint_band(band, self.painter, self.margin_left, self.cursor, row, subrenderer)
+        m_top, m_left, m_bottom, m_right = self.bundle.page.margins
+        _paint_band(band, self.painter, self.margin_left, self.cursor, row, subrenderer,
+                    self.page_w - m_left - m_right)
         self.cursor += height
 
     def finish(self) -> None:

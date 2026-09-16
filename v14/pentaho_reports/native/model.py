@@ -64,16 +64,23 @@ class Style(_Record):
     _fields = (
         ("x", 0.0, False), ("y", 0.0, False), ("width", 0.0, False), ("height", 0.0, False),
         ("height_pct", None, False),      # min-height="100%" → 100.0
+        ("width_pct", None, False),       # min-width="100%" → 100.0 (width keeps the raw number)
         ("font_face", None, False), ("font_size", None, False),
         ("bold", False, False), ("italic", False, False), ("underline", False, False),
         ("align", None, False),           # left | center | right
         ("valign", None, False),          # top | middle | bottom
         ("borders", dict, True),          # Dict[str, BorderSide]
+        ("border_widths", dict, True),    # side → width, even without a style (formula may add one)
         ("padding", dict, True),          # Dict[str, float]
         ("dynamic_height", False, False), ("scale", False, False), ("keep_aspect", False, False),
         ("draw_shape", False, False),
         ("bg_color", None, False),        # raw color string, e.g. "#c9c98b" or "light_gray"
+        ("visible", True, False),         # common-styles visible="false" → not drawn, no space
+        ("layout", None, False),          # band-styles layout: canvas | inline | row | block
     )
+
+    # text-styles keys a band passes down to elements that don't set them
+    INHERITED_TEXT = ("font_face", "font_size", "bold", "italic", "underline")
 
 
 class Element(_Record):
@@ -88,6 +95,7 @@ class Element(_Record):
         ("elements", list, True),         # kind == band  (List[Element])
         ("subreport", None, False),       # kind == sub-report
         ("resource", None, False),        # kind == content (bytes)
+        ("style_expressions", list, True),  # [(style-key, formula)] evaluated per row
     )
     _required = ("kind",)
 
@@ -100,6 +108,9 @@ class Group(_Record):
     _fields = (
         ("fields", list, True),
         ("header", Band, True), ("footer", Band, True), ("details", Band, True), ("no_data", Band, True),
+        # <data-body> <details-header>/<details-footer>: once before/after a
+        # leaf group's detail rows (e.g. column captions, "Nothing Follows")
+        ("details_header", Band, True), ("details_footer", Band, True),
         # a group parsed from a <group-body> sets `child` (the nested <group>) and
         # leaves details/no_data empty; a group parsed from a <data-body> is a LEAF
         # (has details/no_data, child is None). Single-level reports never set
