@@ -14,3 +14,7 @@ The plan these tasks execute is `../superpowers/plans/2026-08-21-per-version-lay
 the design is `../superpowers/specs/2026-08-21-per-version-layout-design.md`; the
 per-version Odoo API facts (file:line evidence) are
 `../superpowers/specs/2026-08-21-odoo-version-api-survey.md`.
+
+- `reports/2026-09-17-nextasia-java-parity.md` — the Java-server parity fixes found in
+  the NextAsia Land production benchmark, handed back to the engine and all nine
+  folders, with the corpus sweep and the 21/21 acceptance matrix.

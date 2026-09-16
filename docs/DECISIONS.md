@@ -112,3 +112,65 @@ version) — *Cost if wrong:* a doc example only. Done in Task 12 (2026-08-23).
 the repo must be self-documenting (this file is part of that), and branch
 integration happens once at the end via the finishing-a-development-branch flow —
 *Cost if wrong:* documentation debt only.
+
+---
+
+## 2026-09-17 — Java-server parity (NextAsia Land benchmark)
+
+Evidence: `build-log/reports/2026-09-17-nextasia-java-parity.md`.
+
+**The Java server's real output is the fidelity reference** — 2026-09-17 — NextAsia
+Land compared every report printed by `tk_pentaho_v18` (Tomcat Java server) with the
+native engine on Odoo.sh — *Alternatives:* keep calibrating against a Report Designer
+render on a workstation — *Why:* that's what clients compare against; 17 reports ×
+22 records were rendered by both engines from the same database and diffed (pages,
+text, ink overlap) — *Cost if wrong:* nothing irreversible; the calibration tests
+keep their Java-measured geometry.
+
+**Arial → base-14 Helvetica (no TTF embedding)** — 2026-09-17 — the Java server on
+Linux has no Arial and writes non-embedded Helvetica; the engine embedded whatever
+TTF the host had (Liberation Sans on Odoo.sh, Arial on macOS), so glyphs and widths
+changed per host — *Alternatives:* bundle a TTF in the module — *Why:* Helvetica is
+what the reference prints, every PDF viewer has it, and the output is identical on
+every host; Arial and Helvetica share advance widths, so the Java wrap-count
+calibration still passes (that test is no longer skipped) — *Cost if wrong:* a
+client whose Java server had real Arial sees Helvetica glyphs (same metrics).
+
+**Sub-report `<parameter-mapping>` input parameters** — 2026-09-17 — the engine ran
+every sub-report with the master's top-level parameters (AP Voucher `KeyError: 'id'`;
+multi-record PRS printed all records' lines) — *Why:* `name → alias` copies the master
+row field (else master parameter) per master row; `name="*"` imports all; an unknown
+source arrives as NULL, as in Java; the master's reserved parameters stay visible so
+bundles without a mapping behave as before; the rows cache is keyed by bundle +
+bound parameters — *Cost if wrong:* a mapped sub-report query sees different values.
+
+**An unplaced sub-report is placed by its root style x AND y** — 2026-09-17 — the
+engine only took the root x ("Java ignores root y") — *Why:* that holds when the
+`<sub-report>` element has its own `spatial-styles`; without them Java uses the
+sub-report's root layout x and y (PRS signature sub-report `y=12`) — *Cost if
+wrong:* a sub-report shifted by its root y.
+
+**A formula subset, not a formula engine** — 2026-09-17 — style expressions were
+ignored; the reports use only `IF(ISBLANK([f]); …)` and `IF([f]=""; …)` for
+`visible`/`border-*-style` — *Alternatives:* a full LibreFormula implementation —
+*Why:* a ~120-line evaluator covers the real usage; `ISBLANK` is NULL-only as in
+Pentaho (`''` is not blank); unsupported formulas raise `FormulaError` and the static
+style stands — *Cost if wrong:* a report relying on another function keeps its static
+style, as before.
+
+**`details-header`/`details-footer` emitted only when they have elements** —
+2026-09-17 — these bands were skipped entirely ("Nothing Follows", grand totals) —
+*Why:* emitting empty bands would change the recorded band sequence of every existing
+report (and the nested-group emission tests); non-empty ones print once per leaf
+partition around its rows, and around a sub-report's rows — *Cost if wrong:* none
+observed.
+
+**NUMERIC stays `Decimal` in report queries** — 2026-09-17 — Odoo registers a
+global NUMERIC→float cast (`sql_db.undecimalize`), so a `numeric(…,2)` text-field
+printed `30.0` where Java (BigDecimal) prints `30.00` — *Alternatives:* registering
+the Decimal cast on Odoo's own cursor (leaks Decimals into the ORM for the rest of
+the request); a new registry cursor (loses the request's transaction) — *Why:* a side
+psycopg2 cursor of the same connection shares the transaction and snapshot, and a
+cursor-scoped `register_type` affects nothing else; `TestCursor` (12+) is unwrapped
+via `_cursor`, and without a connection the plain cursor path is kept — *Cost if
+wrong:* floats again (the previous behavior), never a crash.

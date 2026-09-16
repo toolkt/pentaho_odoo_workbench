@@ -26,6 +26,16 @@
   acceptance matrix: **21/21 PASS** (drift, compileall per venv, engine matrix,
   nine real Odoo installs).
 
+- **2026-09-17 — Java-server parity** (NextAsia Land, `build-log/reports/2026-09-17-nextasia-java-parity.md`):
+  the Odoo 18 copy was deployed to Odoo.sh and benchmarked against the client's
+  production Java server on the same database — 17 reports, 22 records, pages/text/
+  ink diffed. The fixes (sub-report parameter mapping, percentage-height rows,
+  details header/footer, watermark, empty report page, visibility, text-style
+  inheritance, base-14 fonts, text-field numbers, inline/row band layouts, unplaced
+  sub-report placement, style-expression formulas, NUMERIC scale) brought every case
+  to 100% text parity; they were handed back here to engine + all nine glue folders.
+  Corpus render-OK unchanged at 1582/1639; acceptance matrix re-run.
+
 ## How it was built
 
 Brainstorm → spec → plan → task-by-task execution with an independent review per

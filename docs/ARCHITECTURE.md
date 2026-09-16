@@ -23,10 +23,16 @@ impossible on Odoo.sh and painful everywhere else. This repo solves it twice ove
     handles nested `group-body` groups and sub-reports.
   - `painter.py` — reportlab drawing: fonts, wrapping, borders, images, barcodes.
   - `query.py` — `${param}` placeholder → psycopg2 parameters; the report's
-    `static-query` runs on **Odoo's own cursor** (the JDBC block in the `.prpt` is
-    never used — which is why fixtures can be credential-scrubbed).
-  - `fonts.py`, `formats.py` — font resolution and Java `SimpleDateFormat`/number
-    format masks.
+    `static-query` runs on **Odoo's own database connection** (the JDBC block in the
+    `.prpt` is never used — which is why fixtures can be credential-scrubbed). The
+    glue's `_pentaho_execute_query` uses a side cursor of the same connection (same
+    transaction) with psycopg2's `Decimal` cast, because Odoo casts NUMERIC to float.
+  - `fonts.py`, `formats.py` — font resolution (Pentaho faces → base-14 Helvetica/
+    Times/Courier, as the Java server writes them) and Java `SimpleDateFormat`/number
+    format masks; text-fields print numbers as Java `String.valueOf` (`2.00`).
+  - `formula.py` — the OpenFormula subset style expressions use (`IF`, `ISBLANK`,
+    `NOT`, `AND`, `OR`, `=`, `<>`), evaluated per row for `visible` and
+    `border-*-style`; anything else keeps the element's static style.
 - **Glue** (`vNN/pentaho_reports/`): `models/ir_actions_report.py` (report type
   `pentaho`, prpt file storage, render entry points), `controllers/main.py`
   (`/pentaho/preview|download|print`), `views/report_views.xml`, the JS action
